@@ -7,6 +7,7 @@ import {
   TrendingUpIcon,
 } from '@/components/ui/Icons';
 import Link from 'next/link';
+import { StudentResultsList } from '@/components/student/StudentResultsList';
 
 async function getStudentStats(studentId: string) {
   const supabase = await createClient();
@@ -137,64 +138,8 @@ export default async function StudentDashboard() {
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Recent Results */}
-        <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">
-              Recent Results
-            </h2>
-            <Link
-              href="/student/results"
-              className="text-sm text-indigo-600 hover:text-indigo-800"
-            >
-              View all
-            </Link>
-          </div>
-          {recentResults.length > 0 ? (
-            <ul className="space-y-3">
-              {recentResults.map((result) => (
-                <li
-                  key={result.id}
-                  className="p-3 border border-gray-100 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <Link href={`/student/results/${result.id}`}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {result.exam?.exam_name || 'Exam'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {result.exam?.exam_date
-                            ? new Date(result.exam.exam_date).toLocaleDateString()
-                            : 'Date not set'}
-                        </p>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <span className="text-lg font-bold text-indigo-600">
-                          {result.percentage}%
-                        </span>
-                        <span
-                          className={`px-2 py-1 text-xs font-medium rounded-full ${result.status === 'pass'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                            }`}
-                        >
-                          {result.grade}
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-sm text-gray-500">No results available yet</p>
-              <p className="text-xs text-gray-400 mt-1">
-                Results will appear here after your exams are graded
-              </p>
-            </div>
-          )}
-        </div>
+        {/* Recent Results with Search */}
+        <StudentResultsList initialResults={recentResults} />
 
         {/* Performance Insights */}
         <div className="p-6 bg-white border border-gray-200 rounded-lg shadow-sm">

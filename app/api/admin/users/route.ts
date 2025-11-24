@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { CreateUserSchema } from '@/lib/validations/userValidation';
 
 // GET - Fetch all users
@@ -94,22 +95,34 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { email, password, full_name, role, school_id, roll_number, student_class } = validationResult.data;
+        const { email: inputEmail, password, full_name, role, school_id, roll_number, student_class } = validationResult.data;
+
+        // Generate dummy email for students if not provided
+        let email = inputEmail;
+        if (role === 'student' && !email) {
+            // Format: student_[roll_number]_[school_id_suffix]@omr.local
+            // We use a suffix of school_id to make it somewhat unique across schools, 
+            // though roll_number should ideally be unique within a school.
+            const schoolSuffix = school_id ? school_id.split('-')[0] : 'noschool';
+            email = `student_${roll_number}_${schoolSuffix}@omr.local`.toLowerCase();
+        } else if (!email) {
+            return NextResponse.json({ error: 'Email is required for non-student users' }, { status: 400 });
+        }
 
         // Create auth user using signUp
         // Create auth user using signUp (with auto-confirm for admin creation)
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        // Create auth user using admin client to auto-confirm
+        const supabaseAdmin = createAdminClient();
+        const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
             email,
             password,
-            options: {
-                emailRedirectTo: undefined, // No email confirmation needed
-                data: {
-                    full_name,
-                    role,
-                    school_id,
-                    roll_number,
-                    student_class,
-                },
+            email_confirm: true,
+            user_metadata: {
+                full_name,
+                role,
+                school_id,
+                roll_number,
+                student_class,
             },
         });
 

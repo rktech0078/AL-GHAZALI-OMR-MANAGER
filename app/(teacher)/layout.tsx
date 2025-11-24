@@ -1,4 +1,5 @@
 import TeacherSidebar from '@/components/teacher/TeacherSidebar';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export default function TeacherLayout({
     children,
@@ -10,7 +11,9 @@ export default function TeacherLayout({
             <TeacherSidebar />
             <div className="md:pl-64 flex flex-col flex-1">
                 <main className="flex-1">
-                    {children}
+                    <ToastProvider>
+                        {children}
+                    </ToastProvider>
                 </main>
             </div>
         </div>

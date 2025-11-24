@@ -30,10 +30,10 @@ export async function processWithGeminiAI(
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
     // List of models to try in order of preference (speed/cost -> stability)
-    // Using stable models available in Gemini free tier (Nov 2024)
+    // Using latest stable Gemini models (Dec 2024)
     const modelsToTry = [
-        'gemini-1.5-flash',      // Fast and cost-effective (stable version)
-        'gemini-1.5-pro'         // More capable (stable version)
+        'gemini-1.5-flash-latest',   // Fast and cost-effective
+        'gemini-1.5-pro-latest'       // More capable backup
     ];
 
     let lastError: Error | null = null;
@@ -49,35 +49,29 @@ export async function processWithGeminiAI(
             ).join(', ');
 
             const prompt = `
-            You are an expert OMR (Optical Mark Recognition) sheet analyzer. Your task is to carefully examine this OMR answer sheet and extract the marked answers with high precision.
+            You are an expert OMR (Optical Mark Recognition) sheet analyzer. Your task is to carefully examine this OMR answer sheet and extract the marked answers with 100% precision.
 
-            **Instructions:**
-            - This OMR sheet contains ${totalQuestions} multiple-choice questions
-            - Each question has ${optionsCount} options: ${optionLetters}
-            - Identify which bubble is filled/darkened for each question
-            - A filled bubble appears darker than empty bubbles
-            - If multiple bubbles are filled for a question, mark it as "MULTIPLE"
-            - If no bubble is clearly filled, mark it as "EMPTY"
-            - Be very careful and precise in your detection
+            **Analysis Rules:**
+            1.  **Identify Bubbles**: Locate the rows for questions ${1} to ${totalQuestions}.
+            2.  **Detect Marks**: Look for filled bubbles.
+                *   **Dark Marks**: Clearly filled bubbles are the primary answers.
+                *   **Faint Marks**: You MUST detect faint marks (light pencil/pen). If a bubble is significantly darker than the background, count it.
+                *   **Erasures**: If a bubble looks erased (smudged but lighter than a valid mark) and another is clearly marked, ignore the erased one.
+            3.  **Validation**:
+                *   **Single Mark**: If exactly one bubble is filled, record the letter (A, B, C, etc.).
+                *   **Multiple Marks**: If >1 bubble is filled for a question, record "MULTIPLE".
+                *   **No Marks**: If NO bubble is filled, record "EMPTY".
 
             **Output Format:**
-            Return ONLY a valid JSON object with this exact structure:
+            Return ONLY a valid JSON object. Do not include markdown formatting (like \`\`\`json).
+            Structure:
             {
               "1": "A",
               "2": "B",
-              "3": "C",
+              "3": "MULTIPLE",
+              "4": "EMPTY",
               ...
             }
-
-            **Important:**
-            - Use question numbers as keys (as strings)
-            - Use uppercase letters for answers (${optionLetters})
-            - Use "MULTIPLE" if more than one bubble is filled
-            - Use "EMPTY" if no bubble is filled
-            - Do not include any explanation, only the JSON object
-            - Ensure the JSON is valid and parseable
-
-            Analyze the image carefully and provide the answers.
             `;
 
             // Convert buffer to base64

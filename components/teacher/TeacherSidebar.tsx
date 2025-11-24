@@ -1,4 +1,6 @@
 'use client';
+// Force rebuild
+
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -35,37 +37,53 @@ export default function TeacherSidebar() {
     ];
 
     return (
-        <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:top-16 z-40">
-            <div className="flex flex-col flex-1 min-h-0 bg-white border-r border-gray-200">
-                <div className="flex flex-col flex-1 pt-5 pb-4 overflow-y-auto">
-                    <nav className="flex-1 px-2 space-y-1">
+        <div className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 md:top-16 z-40 bg-white border-r border-gray-200 shadow-sm">
+            <div className="flex flex-col flex-1 min-h-0">
+                <div className="flex flex-col flex-1 pt-6 pb-4 overflow-y-auto">
+                    <div className="px-4 mb-6">
+                        <Link
+                            href="/teacher/create-exam"
+                            className="flex items-center justify-center w-full px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg shadow-md hover:from-indigo-700 hover:to-purple-700 transition-all hover:shadow-lg transform hover:-translate-y-0.5"
+                        >
+                            <span className="mr-2 text-lg">+</span>
+                            New Exam
+                        </Link>
+                    </div>
+
+                    <nav className="flex-1 px-3 space-y-1">
                         {navigation.map((item) => {
                             const isActive = pathname === item.href || pathname?.startsWith(item.href + '/');
                             return (
                                 <Link
                                     key={item.name}
                                     href={item.href}
-                                    className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md transition-colors ${isActive
-                                        ? 'bg-indigo-50 text-indigo-600'
+                                    className={`group flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 ${isActive
+                                        ? 'bg-indigo-50 text-indigo-700 shadow-sm'
                                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                                         }`}
                                 >
-                                    <div className={`mr-3 flex-shrink-0 h-6 w-6 ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-500'
+                                    <div className={`mr-3 flex-shrink-0 h-5 w-5 transition-colors ${isActive ? 'text-indigo-600' : 'text-gray-400 group-hover:text-gray-500'
                                         }`}>
                                         <item.icon />
                                     </div>
                                     {item.name}
+                                    {isActive && (
+                                        <div className="ml-auto w-1.5 h-1.5 rounded-full bg-indigo-600"></div>
+                                    )}
                                 </Link>
                             );
                         })}
                     </nav>
                 </div>
-                <div className="flex flex-shrink-0 p-4 border-t border-gray-200">
+                <div className="flex flex-shrink-0 p-4 border-t border-gray-100 bg-gray-50/50">
                     <button
-                        onClick={handleSignOut}
-                        className="flex items-center w-full px-2 py-2 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 group"
+                        onClick={() => {
+                            // Force hard redirect for logout
+                            window.location.href = '/login';
+                        }}
+                        className="flex items-center w-full px-3 py-2.5 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors group"
                     >
-                        <div className="mr-3 flex-shrink-0 w-6 h-6 text-red-400 group-hover:text-red-500">
+                        <div className="mr-3 flex-shrink-0 w-5 h-5 text-red-400 group-hover:text-red-500 transition-colors">
                             <LogOutIcon />
                         </div>
                         Sign Out

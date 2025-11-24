@@ -19,11 +19,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Parse form data
         const formData = await request.formData();
         const file = formData.get('image') as File;
         const examId = formData.get('examId') as string;
         const studentId = formData.get('studentId') as string || user.id;
+        const forceModel = formData.get('forceModel') as string;
 
         // Validate inputs
         if (!file) {
@@ -112,7 +112,8 @@ export async function POST(request: NextRequest) {
         try {
             const result = await processOMRSheet(buffer, {
                 examId,
-                studentId: finalStudentId
+                studentId: finalStudentId,
+                forceModel: forceModel || undefined
             });
 
             if (result.success) {

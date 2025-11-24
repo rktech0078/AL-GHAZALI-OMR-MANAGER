@@ -1,4 +1,5 @@
 import React from 'react';
+import { ToastProvider } from '@/components/ui/Toast';
 
 export default function AdminLayout({
     children,
@@ -7,7 +8,9 @@ export default function AdminLayout({
 }) {
     return (
         <div className="min-h-screen bg-gray-50 pt-16">
-            {children}
+            <ToastProvider>
+                {children}
+            </ToastProvider>
         </div>
     );
 }

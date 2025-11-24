@@ -1,11 +1,15 @@
 'use client';
+// Force rebuild
+
 
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import type { User } from '@supabase/supabase-js';
+import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
+import { signOutAction } from "@/lib/actions/auth-actions";
 
 interface UserProfile {
     full_name: string;
@@ -21,6 +25,9 @@ export function Navbar() {
     const pathname = usePathname();
     const router = useRouter();
 
+    const [loading, setLoading] = useState(true);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+
     useEffect(() => {
         const handleScroll = () => {
             setIsScrolled(window.scrollY > 10);
@@ -33,41 +40,80 @@ export function Navbar() {
     useEffect(() => {
         const supabase = createSupabaseBrowserClient();
 
-        const fetchUser = async () => {
-            const { data: { user } } = await supabase.auth.getUser();
-            setUser(user);
-
-            if (user) {
+        const fetchProfile = async (userId: string) => {
+            try {
                 const { data: profile } = await supabase
                     .from('users')
                     .select('full_name, role')
-                    .eq('id', user.id)
+                    .eq('id', userId)
                     .single();
-
                 setUserProfile(profile);
+            } catch (error) {
+                console.error('Error fetching profile:', error);
             }
         };
 
-        fetchUser();
+        const initializeAuth = async () => {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                setUser(user);
+                if (user) {
+                    await fetchProfile(user.id);
+                }
+            } catch (error) {
+                console.error('Error initializing auth:', error);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        initializeAuth();
 
         // Subscribe to auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
             setUser(session?.user ?? null);
-            if (!session?.user) {
+
+            if (session?.user) {
+                // If we have a user but no profile (e.g. on login), fetch it
+                // We don't check !userProfile here because it might be stale closure
+                await fetchProfile(session.user.id);
+            } else {
                 setUserProfile(null);
             }
+            setLoading(false);
         });
 
-        return () => subscription.unsubscribe();
+        // Safety timeout to prevent infinite loading in Navbar
+        const timer = setTimeout(() => {
+            setLoading(false);
+        }, 2000);
+
+        return () => {
+            subscription.unsubscribe();
+            clearTimeout(timer);
+        };
     }, []);
 
     // Handle logout
     const handleLogout = async () => {
-        const supabase = createSupabaseBrowserClient();
-        await supabase.auth.signOut();
-        setIsProfileMenuOpen(false);
-        router.push('/login');
-        router.refresh();
+        try {
+            setIsLoggingOut(true);
+
+            // Clear local state immediately for UI feedback
+            setUser(null);
+            setUserProfile(null);
+            setIsProfileMenuOpen(false);
+
+            // Call server action to clear cookies
+            await signOutAction();
+
+            // Force hard redirect to clear all client state
+            window.location.href = '/login';
+        } catch (error) {
+            console.error('Error signing out:', error);
+            // Force redirect even on error
+            window.location.href = '/login';
+        }
     };
 
     // Check if we're on a public page
@@ -123,8 +169,26 @@ export function Navbar() {
         return links;
     };
 
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsProfileMenuOpen(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }, []);
+
+    // ... (rest of the code)
+
     return (
         <>
+            {isLoggingOut && <FullScreenLoader text="Logging out..." />}
             <nav
                 className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled || !isPublicPage
                     ? 'bg-white/95 backdrop-blur-md shadow-md'
@@ -166,54 +230,51 @@ export function Navbar() {
                                     </Link>
                                     <Link
                                         href="/login"
-                                        className={`font-medium transition-colors ${isScrolled || !isPublicPage
-                                            ? 'text-gray-700 hover:text-indigo-600'
-                                            : 'text-white hover:text-indigo-200'
-                                            }`}
-                                    >
-                                        Login
-                                    </Link>
-                                    <Link
-                                        href="/signup"
                                         className="px-6 py-2 text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl"
                                     >
-                                        Sign Up
+                                        Login
                                     </Link>
                                 </>
                             ) : (
                                 // Logged in - show user menu
                                 <div className="flex items-center space-x-6">
-                                    {/* Role-based Navigation Links */}
-                                    {getNavLinks().map((link) => (
-                                        <Link
-                                            key={link.href}
-                                            href={link.href}
-                                            className={`text-sm font-medium transition-colors ${pathname === link.href
-                                                ? 'text-indigo-600'
-                                                : isScrolled || !isPublicPage
-                                                    ? 'text-gray-700 hover:text-indigo-600'
-                                                    : 'text-white hover:text-indigo-200'
-                                                }`}
-                                        >
-                                            {link.name}
-                                        </Link>
-                                    ))}
+                                    {/* Desktop: Only show Dashboard link, sidebar handles the rest */}
+                                    <Link
+                                        href={getDashboardUrl()}
+                                        className={`text-sm font-medium transition-colors ${pathname === getDashboardUrl()
+                                            ? 'text-indigo-600'
+                                            : isScrolled || !isPublicPage
+                                                ? 'text-gray-700 hover:text-indigo-600'
+                                                : 'text-white hover:text-indigo-200'
+                                            }`}
+                                    >
+                                        Dashboard
+                                    </Link>
 
-                                    <div className="relative">
+                                    <div className="relative" ref={dropdownRef}>
                                         <button
                                             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                                             className="flex items-center space-x-3 px-3 py-2 rounded-full hover:bg-gray-100 transition-colors"
                                         >
-                                            <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full text-white font-bold">
+                                            <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-indigo-600 to-purple-600 rounded-full text-white font-bold flex-shrink-0">
                                                 {getUserInitials()}
                                             </div>
                                             <div className="text-left hidden lg:block">
-                                                <p className="text-sm font-medium text-gray-900">
-                                                    {userProfile?.full_name || user?.email}
-                                                </p>
-                                                <p className="text-xs text-gray-500 capitalize">
-                                                    {userProfile?.role || 'User'}
-                                                </p>
+                                                {loading ? (
+                                                    <div className="space-y-1 animate-pulse">
+                                                        <div className="h-4 w-24 bg-gray-200 rounded"></div>
+                                                        <div className="h-3 w-16 bg-gray-200 rounded"></div>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <p className="text-sm font-medium text-gray-900 truncate max-w-[120px]">
+                                                            {userProfile?.full_name || user?.email}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500 capitalize truncate max-w-[120px]">
+                                                            {userProfile?.role || 'User'}
+                                                        </p>
+                                                    </>
+                                                )}
                                             </div>
                                             <svg
                                                 className={`w-4 h-4 text-gray-600 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''
@@ -249,12 +310,20 @@ export function Navbar() {
                                                 <div className="border-t border-gray-100 my-2"></div>
                                                 <button
                                                     onClick={handleLogout}
-                                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                                    disabled={isLoggingOut}
+                                                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
-                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                                    </svg>
-                                                    <span>Logout</span>
+                                                    {isLoggingOut ? (
+                                                        <svg className="animate-spin h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        </svg>
+                                                    ) : (
+                                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                                        </svg>
+                                                    )}
+                                                    <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
                                                 </button>
                                             </div>
                                         )}
@@ -324,17 +393,10 @@ export function Navbar() {
                                 </Link>
                                 <Link
                                     href="/login"
-                                    className="py-3 px-4 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg font-medium transition-colors"
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                    Login
-                                </Link>
-                                <Link
-                                    href="/signup"
                                     className="py-3 px-4 text-center text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg shadow-md hover:shadow-lg transition-all mt-4"
                                     onClick={() => setIsMobileMenuOpen(false)}
                                 >
-                                    Sign Up
+                                    Login
                                 </Link>
                             </div>
                         ) : (
@@ -376,12 +438,20 @@ export function Navbar() {
 
                                 <button
                                     onClick={handleLogout}
-                                    className="flex items-center space-x-2 w-full py-3 px-4 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors"
+                                    disabled={isLoggingOut}
+                                    className="flex items-center space-x-2 w-full py-3 px-4 text-red-600 hover:bg-red-50 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                                    </svg>
-                                    <span>Logout</span>
+                                    {isLoggingOut ? (
+                                        <svg className="animate-spin h-5 w-5 text-red-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                                        </svg>
+                                    )}
+                                    <span>{isLoggingOut ? 'Logging out...' : 'Logout'}</span>
                                 </button>
                             </div>
                         )}

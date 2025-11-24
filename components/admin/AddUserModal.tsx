@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/components/ui/Toast';
 
 // Loading spinner component
 const LoadingSpinner = () => (
@@ -61,6 +62,8 @@ export default function AddUserModal({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const { showToast } = useToast();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
@@ -97,10 +100,13 @@ export default function AddUserModal({
                 student_class: '',
             });
 
+            showToast('User created successfully', 'success');
             onSuccess();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred');
+            const message = err instanceof Error ? err.message : 'An error occurred';
+            setError(message);
+            showToast(message, 'error');
         } finally {
             setLoading(false);
         }
@@ -184,23 +190,25 @@ export default function AddUserModal({
                                 />
                             </div>
 
-                            {/* Email */}
-                            <div>
-                                <label className="block mb-2 text-sm font-semibold text-gray-700">
-                                    Email Address <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="email"
-                                    required
-                                    disabled={loading}
-                                    value={formData.email}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, email: e.target.value })
-                                    }
-                                    className="w-full px-4 py-3 text-sm border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:cursor-not-allowed"
-                                    placeholder="user@example.com"
-                                />
-                            </div>
+                            {/* Email - Only show for non-students */}
+                            {formData.role !== 'student' && (
+                                <div>
+                                    <label className="block mb-2 text-sm font-semibold text-gray-700">
+                                        Email Address <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="email"
+                                        required
+                                        disabled={loading}
+                                        value={formData.email}
+                                        onChange={(e) =>
+                                            setFormData({ ...formData, email: e.target.value })
+                                        }
+                                        className="w-full px-4 py-3 text-sm border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:cursor-not-allowed"
+                                        placeholder="user@example.com"
+                                    />
+                                </div>
+                            )}
                         </div>
 
                         {/* Password */}
@@ -281,10 +289,11 @@ export default function AddUserModal({
                             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                                 <div>
                                     <label className="block mb-2 text-sm font-semibold text-gray-700">
-                                        Roll Number
+                                        Roll Number <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
+                                        required={formData.role === 'student'}
                                         disabled={loading}
                                         value={formData.roll_number}
                                         onChange={(e) =>

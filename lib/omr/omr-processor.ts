@@ -3,6 +3,7 @@ import { scanCodes, validateCodes } from './code-scanner';
 import { generateBubbleRegions, detectFilledBubbles, shouldUseGeminiAI, getDetectionStats } from './bubble-detector';
 import { processWithGeminiAI, mergeDetectionResults } from './ai-processor';
 import { processWithGroq } from './groq-processor';
+import { processWithOpenRouter } from './openrouter-processor';
 import { calculateResult } from './results-calculator';
 import { bufferToMat, cleanupMats } from './opencv-utils';
 import { createClient } from '@/lib/supabase/server';
@@ -17,6 +18,7 @@ export interface ProcessingOptions {
     studentId?: string;
     useAIFallback?: boolean;
     forceAI?: boolean;
+    forceModel?: string; // 'opencv', 'groq', 'gemini', or 'openrouter:model-id'
 }
 
 export interface ProcessingResult {
@@ -29,7 +31,7 @@ export interface ProcessingResult {
     percentage?: number;
     grade?: string;
     status?: 'pass' | 'fail';
-    processingMethod: 'library' | 'gemini-ai' | 'groq-ai' | 'hybrid';
+    processingMethod: 'library' | 'gemini-ai' | 'groq-ai' | 'openrouter' | 'hybrid';
     confidence: number;
     error?: string;
     issues?: string[];
@@ -153,12 +155,44 @@ export async function processOMRSheet(
         }
 
         let finalAnswers: Map<number, string> = new Map();
-        let processingMethod: 'library' | 'gemini-ai' | 'groq-ai' | 'hybrid' = 'library';
+        let processingMethod: 'library' | 'gemini-ai' | 'groq-ai' | 'openrouter' | 'hybrid' = 'library';
         let confidence: number = 0;
         let issues: string[] = [];
 
-        // Step 5: Try library-based detection first (unless forced AI)
-        if (!options.forceAI) {
+        // Handle forced model selection (for testing)
+        if (options.forceModel) {
+            console.log(`🔧 Forced Model: ${options.forceModel}`);
+            
+            if (options.forceModel === 'opencv') {
+                const imageMat = await bufferToMat(processedBuffer);
+                const regions = generateBubbleRegions(exam.total_questions);
+                const detectionResult = await detectFilledBubbles(imageMat, regions);
+                cleanupMats(imageMat);
+                finalAnswers = detectionResult.answers;
+                processingMethod = 'library';
+                confidence = detectionResult.confidence;
+                issues = detectionResult.issues;
+            } else if (options.forceModel === 'groq') {
+                const result = await processWithGroq(processedBuffer, exam.total_questions, exam.options_count || 4);
+                finalAnswers = result.answers;
+                processingMethod = 'groq-ai';
+                confidence = result.confidence;
+            } else if (options.forceModel === 'gemini') {
+                const result = await processWithGeminiAI(processedBuffer, exam.total_questions, exam.options_count || 4);
+                finalAnswers = result.answers;
+                processingMethod = 'gemini-ai';
+                confidence = result.confidence;
+            } else if (options.forceModel.startsWith('openrouter:')) {
+                const modelId = options.forceModel.replace('openrouter:', '');
+                const result = await processWithOpenRouter(processedBuffer, exam.total_questions, exam.options_count || 4, modelId);
+                finalAnswers = result.answers;
+                processingMethod = 'openrouter';
+                confidence = result.confidence;
+            }
+            console.log(`✅ Forced model processed: ${finalAnswers.size}/${exam.total_questions} answers`);
+        }
+        // Normal processing flow (auto multi-tier)
+        else if (!options.forceAI) {
             console.log('Step 5: Detecting bubbles with OpenCV...');
 
             // Convert buffer to Mat
@@ -180,43 +214,43 @@ export async function processOMRSheet(
             cleanupMats(imageMat);
 
             // Step 6: Multi-tier AI fallback chain
-            if (options.useAIFallback !== false && shouldUseGeminiAI(detectionResult, exam.total_questions)) {
-                console.log('Step 6: Low confidence detected, initiating AI fallback chain...');
+            // Strict Order: OpenCV (Tier 1) -> Groq (Tier 2) -> Gemini (Tier 3)
+
+            const needsFallback = options.useAIFallback !== false && shouldUseGeminiAI(detectionResult, exam.total_questions);
+
+            if (needsFallback) {
+                console.log('⚠️ Tier 1 (OpenCV) low confidence. Initiating AI Fallback Chain...');
+                console.log(`Issues: ${detectionResult.issues.join(', ')}`);
 
                 let aiResult;
                 let aiMethod: 'groq-ai' | 'gemini-ai' | null = null;
 
-                // Try Groq first (fastest & free)
+                // Tier 2: Groq (Llama Vision) - Fast & Free
                 try {
-                    console.log('Trying Groq + LLaMA-3.2-Vision (primary AI)...');
+                    console.log('🚀 Tier 2: Attempting Groq AI (Llama-3.2-Vision)...');
                     aiResult = await processWithGroq(
                         processedBuffer,
                         exam.total_questions,
                         exam.options_count || 4
                     );
                     aiMethod = 'groq-ai';
-                    console.log('✅ Groq AI processing successful');
+                    console.log('✅ Tier 2 (Groq) Success!');
                 } catch (groqError) {
-                    console.warn('⚠️ Groq failed, trying Gemini fallback...', groqError);
+                    console.warn('❌ Tier 2 (Groq) Failed:', groqError);
 
-                    // Fallback to Gemini
+                    // Tier 3: Gemini Flash - Backup
                     try {
-                        console.log('Trying Gemini AI (backup)...');
+                        console.log('🛡️ Tier 3: Attempting Gemini AI (Backup)...');
                         aiResult = await processWithGeminiAI(
                             processedBuffer,
                             exam.total_questions,
                             exam.options_count || 4
                         );
                         aiMethod = 'gemini-ai';
-                        console.log('✅ Gemini AI processing successful');
+                        console.log('✅ Tier 3 (Gemini) Success!');
                     } catch (geminiError) {
-                        console.error('❌ All AI fallbacks failed:', geminiError);
-                        // Use library results with warning
-                        finalAnswers = detectionResult.answers;
-                        processingMethod = 'library';
-                        confidence = detectionResult.confidence;
-                        issues.push('All AI fallbacks failed, using library results');
-                        aiResult = null;
+                        console.error('❌ Tier 3 (Gemini) Failed:', geminiError);
+                        console.error('❌ All AI tiers failed. Falling back to OpenCV results.');
                     }
                 }
 
@@ -232,48 +266,80 @@ export async function processOMRSheet(
                     processingMethod = 'hybrid';
                     confidence = Math.max(detectionResult.confidence, aiResult.confidence);
 
-                    console.log(`Hybrid processing completed (OpenCV + ${aiMethod})`);
+                    // Clear issues if AI fixed them
+                    if (confidence > 0.8) {
+                        issues = [];
+                    }
+
+                    console.log(`✨ Hybrid Processing Complete: OpenCV + ${aiMethod}`);
                 }
             } else {
-                // Use library results
+                // Tier 1 Success
+                console.log('✅ Tier 1 (OpenCV) Success! High confidence.');
                 finalAnswers = detectionResult.answers;
                 processingMethod = 'library';
                 confidence = detectionResult.confidence;
-                console.log('Library detection successful');
             }
         } else {
-            // Force AI processing (Groq first, Gemini fallback)
-            console.log('Step 5: Processing with AI (forced)...');
+            // Force AI Mode (Debug/Manual Override)
+            console.log('🔧 Force AI Mode Enabled');
 
             try {
-                console.log('Using Groq AI (forced mode)...');
+                console.log('🚀 Attempting Groq AI...');
                 const aiResult = await processWithGroq(
                     processedBuffer,
                     exam.total_questions,
                     exam.options_count || 4
                 );
-
                 finalAnswers = aiResult.answers;
                 processingMethod = 'groq-ai';
                 confidence = aiResult.confidence;
             } catch (groqError) {
-                console.warn('Groq failed in forced mode, trying Gemini...', groqError);
-
-                const aiResult = await processWithGeminiAI(
-                    processedBuffer,
-                    exam.total_questions,
-                    exam.options_count || 4
-                );
-
-                finalAnswers = aiResult.answers;
-                processingMethod = 'gemini-ai';
-                confidence = aiResult.confidence;
+                console.warn('❌ Groq Failed, trying Gemini...', groqError);
+                try {
+                    const aiResult = await processWithGeminiAI(
+                        processedBuffer,
+                        exam.total_questions,
+                        exam.options_count || 4
+                    );
+                    finalAnswers = aiResult.answers;
+                    processingMethod = 'gemini-ai';
+                    confidence = aiResult.confidence;
+                } catch (geminiError) {
+                    console.error('❌ All AI models failed in Force Mode');
+                    throw geminiError;
+                }
             }
+        }
+
+        // CHECKPOINT 3: Validate completion rate (reject if too few answers detected)
+        const completionRate = finalAnswers.size / exam.total_questions;
+        console.log(`Completion Rate: ${(completionRate * 100).toFixed(1)}%`);
+
+        if (completionRate < 0.05) {
+            // Less than 5% answered - likely blank sheet or detection failure
+            console.warn('⚠️ Very low completion rate - possible blank sheet');
+            return {
+                success: false,
+                error: 'No valid answers detected. Please ensure the OMR sheet has filled bubbles and is properly scanned.',
+                processingMethod,
+                confidence: 0,
+                issues: ['Completion rate below 5% - possible blank sheet or invalid image']
+            };
         }
 
         // Step 7: Calculate result
         console.log('Step 7: Calculating result...');
         const result = await calculateResult(options.examId, finalAnswers);
+
+        // CHECKPOINT 4: Zero-score validation (ensure 0 marks if no answers)
+        if (finalAnswers.size === 0 && result.obtainedMarks > 0) {
+            console.error('❌ Critical: Zero answers but non-zero marks detected!');
+            result.obtainedMarks = 0;
+            result.percentage = 0;
+            result.grade = 'F';
+            result.status = 'fail';
+        }
 
         // Step 8: Store result in database
         console.log('Step 8: Storing result...');

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/components/ui/Toast';
 
 // Loading spinner
 const LoadingSpinner = () => (
@@ -42,6 +43,8 @@ export default function DeleteUserConfirmation({
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const { showToast } = useToast();
+
     const handleDelete = async () => {
         if (!user) return;
 
@@ -59,10 +62,13 @@ export default function DeleteUserConfirmation({
                 throw new Error(data.error || 'Failed to delete user');
             }
 
+            showToast('User deleted successfully', 'success');
             onSuccess();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred');
+            const message = err instanceof Error ? err.message : 'An error occurred';
+            setError(message);
+            showToast(message, 'error');
         } finally {
             setLoading(false);
         }

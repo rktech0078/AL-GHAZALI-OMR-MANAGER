@@ -16,7 +16,6 @@ interface OMRGeneratorOptions {
     examId?: string;
     rollNumber?: string;
     studentClass?: string;
-
 }
 
 export interface StudentInfo {
@@ -30,7 +29,18 @@ export class OMRPDFGenerator {
     private doc: PDFKit.PDFDocument;
     private buffers: Buffer[] = [];
     private options: OMRGeneratorOptions;
-    private pageMargin = 35;
+    private pageMargin = 40;
+
+    // Professional color scheme
+    private colors = {
+        primary: '#5B4BDA',      // Purple
+        secondary: '#06B6D4',    // Cyan
+        dark: '#1F2937',         // Dark gray
+        medium: '#6B7280',       // Medium gray
+        light: '#E5E7EB',        // Light gray
+        accent: '#10B981',       // Green
+        warning: '#F59E0B'       // Amber
+    };
 
     constructor(options: OMRGeneratorOptions = {}) {
         this.options = {
@@ -38,7 +48,7 @@ export class OMRPDFGenerator {
             options: 4,
             showKey: false,
             answerKey: {},
-            schoolName: "Al-Ghazali High School",
+            schoolName: "Al-Ghazali School",
             examName: "OMR Answer Sheet",
             ...options,
         };
@@ -54,11 +64,14 @@ export class OMRPDFGenerator {
     }
 
     private loadFont() {
-        const fontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
-        if (fs.existsSync(fontPath)) {
-            this.doc.registerFont("Roboto-Regular", fontPath);
-        } else {
-            // Fallback to standard font if custom font missing
+        try {
+            const fontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
+            if (fs.existsSync(fontPath)) {
+                this.doc.registerFont("Roboto-Regular", fontPath);
+            } else {
+                this.doc.font('Helvetica');
+            }
+        } catch (error) {
             this.doc.font('Helvetica');
         }
     }
@@ -96,13 +109,11 @@ export class OMRPDFGenerator {
 
     private async addPageForStudent(student: StudentInfo) {
         this.doc.addPage({
-            font: "Roboto-Regular",
             margins: { top: 30, bottom: 30, left: this.pageMargin, right: this.pageMargin },
         });
 
         const uniqueId = `OMR-${Date.now()}-${student.id.substring(0, 4)}`;
 
-        // Update options for current student context
         this.options.studentName = student.name;
         this.options.studentId = student.id;
         this.options.rollNumber = student.rollNumber;
@@ -110,234 +121,297 @@ export class OMRPDFGenerator {
 
         await this.addHeader(uniqueId);
         this.addStudentInfo();
+        this.addInstructions();
         this.addAnswerGrid();
         this.addFooter();
     }
 
     private async addHeader(uniqueId: string) {
+        const headerHeight = 85;
         const headerStartY = this.doc.y;
+
+        // Header background
+        this.doc
+            .rect(this.pageMargin - 10, headerStartY - 10, this.doc.page.width - (this.pageMargin * 2) + 20, headerHeight)
+            .fillAndStroke(this.colors.primary, this.colors.primary);
+
         // Logo (Left)
         if (this.options.logoBuffer) {
-            this.doc.image(this.options.logoBuffer, this.pageMargin, headerStartY, { width: 50 });
+            this.doc.image(this.options.logoBuffer, this.pageMargin + 5, headerStartY + 5, {
+                width: 50,
+                height: 50
+            });
         }
 
-        // QR Code (Right) - Simple Exam ID + Student ID
-        const qrCodeX = this.doc.page.width - this.pageMargin - 60;
-
-        // JSON Data for QR: { e: ExamID, s: StudentID }
-        // Compact keys to keep QR code simple and scannable
+        // QR Code (Right) - FIXED for better scanning
+        const qrCodeX = this.doc.page.width - this.pageMargin - 70;
         const qrDataObj = {
             e: this.options.examId || 'NO_EXAM',
             s: this.options.studentId || 'NO_STUDENT'
         };
         const qrData = JSON.stringify(qrDataObj);
 
-        this.doc
-            .fontSize(7)
-            .fillColor("#666666")
-            .text(uniqueId, qrCodeX - 60, headerStartY, {
-                width: 120,
-                align: "right",
-            });
-
+        // Generate high-quality QR code
         const qrCodeData = await QRCode.toDataURL(qrData, {
-            errorCorrectionLevel: "M",
-            margin: 1,
-            width: 60,
+            errorCorrectionLevel: "H",  // Highest error correction
+            margin: 2,                   // More margin for better scanning
+            width: 256,                  // Higher resolution
+            color: {
+                dark: '#000000',         // Pure black for maximum contrast
+                light: '#FFFFFF'         // Pure white background
+            }
         });
-        this.doc.image(qrCodeData, qrCodeX, headerStartY + 12, { width: 60 });
+        // QR positioned at top of header (aligned with logo)
+        this.doc.image(qrCodeData, qrCodeX, headerStartY, { width: 70 });
 
-        // Center Text (Exam Name & School Name) - Aligned with Logo/QR
-        // Calculate center area
-        const leftSafe = this.pageMargin + 60; // Margin + Logo + Padding
-        const rightSafe = this.doc.page.width - this.pageMargin - 70; // Width - Margin - QR - Padding
+        // Center content
+        const leftSafe = this.pageMargin + 65;
+        const rightSafe = this.doc.page.width - this.pageMargin - 80;
         const centerWidth = rightSafe - leftSafe;
 
-        // Move to top for text
-        this.doc.y = headerStartY + 10; // Slight top padding to align with logo center visually
-
+        // Exam name
         this.doc
-            .font("Roboto-Regular")
             .fontSize(18)
-            .fillColor("#333333")
-            .text(this.options.examName || "OMR Answer Sheet", leftSafe, this.doc.y, {
+            .font('Helvetica-Bold')
+            .fillColor('#FFFFFF')
+            .text(this.options.examName || "OMR ANSWER SHEET", leftSafe, headerStartY + 15, {
                 width: centerWidth,
                 align: "center",
             });
 
-        this.doc.moveDown(0.3);
-
+        // School name
         this.doc
             .fontSize(10)
-            .fillColor("#666666")
-            .text(this.options.schoolName || "Al-Ghazali OMR Manager", leftSafe, this.doc.y, {
+            .font('Helvetica')
+            .fillColor('#E0E7FF')
+            .text(this.options.schoolName || "Al-Ghazali School", leftSafe, headerStartY + 38, {
                 width: centerWidth,
                 align: "center",
             });
 
-        // Set Y to the maximum height of the header elements (approx 75px from start)
-        this.doc.y = headerStartY + 75;
-
+        // Document ID
         this.doc
-            .strokeColor("#dddddd")
-            .lineWidth(0.5)
-            .moveTo(this.pageMargin, this.doc.y)
-            .lineTo(this.doc.page.width - this.pageMargin, this.doc.y)
-            .stroke();
-        this.doc.moveDown(0.5);
+            .fontSize(7)
+            .fillColor('#C7D2FE')
+            .text(`ID: ${uniqueId}`, leftSafe, headerStartY + 55, {
+                width: centerWidth,
+                align: "center",
+            });
+
+        this.doc.y = headerStartY + headerHeight + 15;
+        this.doc.fillColor(this.colors.dark);
     }
 
     private addStudentInfo() {
+        // Section Title
+        const titleY = this.doc.y;
         this.doc
-            .fontSize(12)
-            .fillColor("#333333")
-            .text("Student Information", this.pageMargin + 5, this.doc.y);
-        this.doc.moveDown(0.5);
+            .rect(this.pageMargin - 5, titleY - 2, this.doc.page.width - (this.pageMargin * 2) + 10, 18)
+            .fill(this.colors.primary);
 
-        // Define fields with their values (if available)
+        this.doc
+            .fontSize(11)
+            .font('Helvetica-Bold')
+            .fillColor('#FFFFFF')
+            .text("STUDENT INFORMATION", this.pageMargin, titleY + 2);
+
+        this.doc.moveDown(0.8);
+        this.doc.fillColor(this.colors.dark);
+
         const fields = [
-            { label: "Name", value: this.options.studentName },
+            { label: "Student Name", value: this.options.studentName },
             { label: "Roll Number", value: this.options.rollNumber },
-            { label: "Class", value: this.options.studentClass },
+            { label: "Class/Section", value: this.options.studentClass },
             { label: "Exam ID", value: this.options.examId }
         ];
 
-        const fieldHeight = 20;
+        const fieldHeight = 26;
+        const labelWidth = 100;
 
         fields.forEach((field) => {
             const currentY = this.doc.y;
-            this.doc
-                .fontSize(10)
-                .fillColor("#555555")
-                .text(`${field.label}:`, this.pageMargin, currentY + 5);
 
-            // Draw box
+            // Label
+            this.doc
+                .fontSize(9)
+                .font('Helvetica-Bold')
+                .fillColor(this.colors.medium)
+                .text(`${field.label}:`, this.pageMargin, currentY + 7);
+
+            // Field box
             this.doc
                 .rect(
-                    this.pageMargin + 70,
+                    this.pageMargin + labelWidth,
                     currentY,
-                    this.doc.page.width - this.pageMargin * 2 - 70,
-                    fieldHeight,
+                    this.doc.page.width - this.pageMargin * 2 - labelWidth,
+                    fieldHeight
                 )
-                .stroke();
+                .lineWidth(1)
+                .strokeColor(this.colors.medium)
+                .fillAndStroke('#FAFAFA', this.colors.medium);
 
-            // Fill value if exists
+            // Value
             if (field.value) {
                 this.doc
                     .fontSize(10)
-                    .fillColor("#000000")
+                    .font('Helvetica-Bold')
+                    .fillColor(this.colors.dark)
                     .text(
                         field.value,
-                        this.pageMargin + 75,
-                        currentY + 5,
-                        { width: this.doc.page.width - this.pageMargin * 2 - 80 }
+                        this.pageMargin + labelWidth + 5,
+                        currentY + 7,
+                        { width: this.doc.page.width - this.pageMargin * 2 - labelWidth - 10 }
                     );
             }
 
             this.doc.y = currentY + fieldHeight + 5;
         });
-        this.doc.moveDown(0.5);
+
+        this.doc.moveDown(0.4);
+    }
+
+    private addInstructions() {
+        const boxY = this.doc.y;
+        const boxHeight = 72;
+
+        // Instructions box
+        this.doc
+            .rect(this.pageMargin, boxY, this.doc.page.width - this.pageMargin * 2, boxHeight)
+            .lineWidth(2)
+            .fillAndStroke('#FEF3C7', '#F59E0B');
+
+        // Title bar
+        this.doc
+            .rect(this.pageMargin + 5, boxY + 5, 110, 15)
+            .fill(this.colors.warning);
+
+        this.doc
+            .fontSize(10)
+            .font('Helvetica-Bold')
+            .fillColor('#FFFFFF')
+            .text("INSTRUCTIONS", this.pageMargin + 15, boxY + 8);
+
+        // Instructions
+        const instructions = [
+            "1. Use DARK pencil (HB/2B) or BLACK pen only",
+            "2. Fill bubbles COMPLETELY - like this: [FILLED]",
+            "3. Do NOT make stray marks outside bubbles",
+            "4. Erase cleanly if you change an answer",
+            "5. Fill ONLY ONE bubble per question"
+        ];
+
+        this.doc
+            .fontSize(7.5)
+            .font('Helvetica')
+            .fillColor(this.colors.dark);
+
+        instructions.forEach((instruction, index) => {
+            this.doc.text(instruction, this.pageMargin + 10, boxY + 28 + (index * 8.5), {
+                width: this.doc.page.width - this.pageMargin * 2 - 20
+            });
+        });
+
+        this.doc.y = boxY + boxHeight + 12;
     }
 
     private addAnswerGrid() {
+        // Section Title
+        const titleY = this.doc.y;
         this.doc
-            .fontSize(12)
-            .fillColor("#333333")
-            .text("Answers", this.pageMargin + 5, this.doc.y);
-        this.doc.moveDown(0.2);
+            .rect(this.pageMargin - 5, titleY - 2, this.doc.page.width - (this.pageMargin * 2) + 10, 18)
+            .fill(this.colors.primary);
+
+        this.doc
+            .fontSize(11)
+            .font('Helvetica-Bold')
+            .fillColor('#FFFFFF')
+            .text("ANSWER SECTION", this.pageMargin, titleY + 2);
+
+        this.doc.moveDown(0.6);
+        this.doc.fillColor(this.colors.dark);
 
         const gridStartY = this.doc.y;
         const questionsPerColumn = 15;
         const maxColumnsPerPage = 4;
         const totalQuestions = this.options.totalQuestions || 20;
-
-        // Calculate total columns needed
         const totalColumns = Math.ceil(totalQuestions / questionsPerColumn);
 
-        const bubbleRadius = 6;
-        const rowHeight = 19;
-        const questionNumWidth = 25;
+        const bubbleRadius = 7.5; // Bigger bubbles for easier filling
+        const rowHeight = 21;
+        const questionNumWidth = 26;
         const optionsCount = this.options.options || 4;
 
-        // We need to track current page and position
         let currentPageIndex = 0;
         let startPageY = gridStartY;
 
         for (let i = 1; i <= totalQuestions; i++) {
-            // Calculate which column this question belongs to (0-indexed globally)
             const globalColIndex = Math.floor((i - 1) / questionsPerColumn);
-            // Calculate which page this column belongs to
             const pageIndex = Math.floor(globalColIndex / maxColumnsPerPage);
-            // Calculate column index relative to the page
             const colIndexOnPage = globalColIndex % maxColumnsPerPage;
-            // Calculate row index
             const rowIndex = (i - 1) % questionsPerColumn;
 
-            // Check if we need to add a new page
             if (pageIndex > currentPageIndex) {
                 this.doc.addPage({
-                    font: "Roboto-Regular",
-                    margins: {
-                        top: 30,
-                        bottom: 30,
-                        left: this.pageMargin,
-                        right: this.pageMargin,
-                    },
+                    margins: { top: 30, bottom: 30, left: this.pageMargin, right: this.pageMargin },
                 });
                 currentPageIndex = pageIndex;
-                startPageY = this.doc.y + 20; // Add some top margin for grid on new page
+                startPageY = this.doc.y + 20;
             }
 
-            // Calculate column width for THIS page
             const columnsOnThisPage = Math.min(maxColumnsPerPage, totalColumns - pageIndex * maxColumnsPerPage);
-
-            const columnSpacing = 30;
-            const columnWidth =
-                (this.doc.page.width - this.pageMargin * 2 - columnSpacing * (columnsOnThisPage - 1)) /
-                columnsOnThisPage;
+            const columnSpacing = 22;
+            const columnWidth = (this.doc.page.width - this.pageMargin * 2 - columnSpacing * (columnsOnThisPage - 1)) / columnsOnThisPage;
             const optionCellWidth = (columnWidth - questionNumWidth) / optionsCount;
 
-            const currentColumnX =
-                this.pageMargin + colIndexOnPage * (columnWidth + columnSpacing);
+            const currentColumnX = this.pageMargin + colIndexOnPage * (columnWidth + columnSpacing);
+            const currentY = startPageY + 18 + rowIndex * rowHeight;
 
-            // Use startPageY for the current page
-            const currentY = startPageY + 15 + rowIndex * rowHeight;
-
-            // Draw Headers (only for first row of each column)
+            // Column headers
             if (rowIndex === 0) {
+                this.doc
+                    .rect(currentColumnX + questionNumWidth - 2, startPageY, optionCellWidth * optionsCount + 4, 14)
+                    .fill(this.colors.light);
+
                 for (let j = 0; j < optionsCount; j++) {
                     this.doc
-                        .fillColor("#333333")
+                        .fillColor(this.colors.primary)
                         .fontSize(9)
+                        .font('Helvetica-Bold')
                         .text(
                             String.fromCharCode(65 + j),
                             currentColumnX + questionNumWidth + j * optionCellWidth,
-                            startPageY, // Header at top of column
-                            { width: optionCellWidth, align: "center" },
+                            startPageY + 2,
+                            { width: optionCellWidth, align: "center" }
                         );
                 }
             }
 
-            // Draw Question Number and Bubbles
+            // Question number
+            const qNumBgWidth = 20;
             this.doc
-                .fillColor("#333333")
-                .fontSize(9)
-                .text(`${i}.`, currentColumnX, currentY, { width: questionNumWidth });
+                .rect(currentColumnX, currentY - 2, qNumBgWidth, 15)
+                .fill(i % 2 === 0 ? '#F9FAFB' : '#FFFFFF');
 
+            this.doc
+                .fillColor(this.colors.dark)
+                .fontSize(9)
+                .font('Helvetica-Bold')
+                .text(`${i}`, currentColumnX + 2, currentY + 1, { width: qNumBgWidth - 4, align: "center" });
+
+            // Answer bubbles
             for (let j = 0; j < optionsCount; j++) {
+                const bubbleX = currentColumnX + questionNumWidth + j * optionCellWidth + optionCellWidth / 2;
+                const bubbleY = currentY + bubbleRadius;
+
                 this.doc
-                    .circle(
-                        currentColumnX +
-                        questionNumWidth +
-                        j * optionCellWidth +
-                        optionCellWidth / 2,
-                        currentY + bubbleRadius / 2,
-                        bubbleRadius,
-                    )
-                    .lineWidth(0.8)
+                    .circle(bubbleX, bubbleY, bubbleRadius)
+                    .lineWidth(1.3)
+                    .strokeColor('#4B5563')
                     .stroke();
             }
         }
+
+        this.doc.fillColor(this.colors.dark);
     }
 
     private addFooter() {
@@ -347,63 +421,34 @@ export class OMRPDFGenerator {
         for (let i = 0; i < count; i++) {
             this.doc.switchToPage(i);
 
-            // Save original bottom margin and set to 0 to allow writing in footer area
             const originalBottomMargin = this.doc.page.margins.bottom;
             this.doc.page.margins.bottom = 0;
-
             const footerY = this.doc.page.height - originalBottomMargin;
 
+            // Footer line
             this.doc
-                .strokeColor("#dddddd")
-                .lineWidth(0.5)
+                .strokeColor(this.colors.light)
+                .lineWidth(1)
                 .moveTo(this.pageMargin, footerY)
                 .lineTo(this.doc.page.width - this.pageMargin, footerY)
                 .stroke();
 
-            const footerText = `Page ${i + 1} of ${count} - This is a computer-generated document from the IT Department of ${this.options.schoolName}.`;
+            // Footer text
+            const footerText = `Page ${i + 1} of ${count} | ${this.options.schoolName} | Auto-generated OMR Sheet`;
             this.doc
-                .fontSize(8)
-                .fillColor("#888888")
+                .fontSize(7)
+                .fillColor(this.colors.medium)
+                .font('Helvetica')
                 .text(footerText, this.pageMargin, footerY + 5, {
                     width: this.doc.page.width - this.pageMargin * 2,
                     align: "center",
                 });
 
-            // Restore bottom margin
             this.doc.page.margins.bottom = originalBottomMargin;
         }
-        // Switch back to last page
+
         if (count > 0) {
             this.doc.switchToPage(count - 1);
         }
-    }
-
-    private addAnswerKey() {
-        this.doc.addPage({ font: "Roboto-Regular" });
-        this.doc
-            .font("Roboto-Regular")
-            .fontSize(16)
-            .text("Answer Key", { align: "center" });
-        this.doc.moveDown();
-
-        const answerKey = this.options.answerKey || {};
-        const sortedKeys = Object.keys(answerKey).sort((a, b) => parseInt(a) - parseInt(b));
-
-        const answersPerRow = 5;
-        let text = "";
-
-        sortedKeys.forEach((q, index) => {
-            text += `Q${q}: ${answerKey[q]}   `;
-
-            if ((index + 1) % answersPerRow === 0 && index < sortedKeys.length - 1) {
-                text += "\n";
-            }
-        });
-
-        this.doc.fontSize(11).text(text, {
-            width: this.doc.page.width - this.pageMargin * 2,
-            align: "left",
-            lineGap: 5
-        });
     }
 }

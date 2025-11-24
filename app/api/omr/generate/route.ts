@@ -20,8 +20,10 @@ export async function POST(request: NextRequest) {
     // Load Logo
     const logoPath = path.join(process.cwd(), "public", "al-ghazali-logo.png");
     let logoBuffer: Buffer | undefined;
-    if (fs.existsSync(logoPath)) {
-      logoBuffer = fs.readFileSync(logoPath);
+    try {
+      logoBuffer = await fs.promises.readFile(logoPath);
+    } catch (error) {
+      console.warn("Logo file not found, proceeding without logo.");
     }
 
     // Generate PDF

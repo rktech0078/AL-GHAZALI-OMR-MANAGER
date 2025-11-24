@@ -103,6 +103,39 @@ export async function validateImage(buffer: Buffer): Promise<ImageValidationResu
             };
         }
 
+        // CHECKPOINT 1: Validate image has sufficient contrast (not blank/white paper)
+        const stats = await sharp(buffer)
+            .grayscale()
+            .stats();
+
+        const channelStats = stats.channels[0]; // Grayscale has 1 channel
+        const mean = channelStats.mean;
+        const stdDev = channelStats.stdev;
+
+        // Blank white paper will have very high mean (~240-255) and very low stdDev (~0-5)
+        if (mean > 240 && stdDev < 10) {
+            return {
+                valid: false,
+                error: 'Image appears to be blank or has insufficient content. Please upload a filled OMR sheet.'
+            };
+        }
+
+        // Completely black images (also invalid)
+        if (mean < 15 && stdDev < 10) {
+            return {
+                valid: false,
+                error: 'Image is too dark or corrupted. Please upload a clear OMR sheet.'
+            };
+        }
+
+        // Low contrast check (likely empty or very faint)
+        if (stdDev < 15) {
+            return {
+                valid: false,
+                error: 'Image has very low contrast. Please ensure the OMR sheet has clear markings.'
+            };
+        }
+
         return {
             valid: true,
             metadata: {

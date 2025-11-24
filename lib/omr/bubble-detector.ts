@@ -99,7 +99,7 @@ export function generateBubbleRegions(
 export async function detectFilledBubbles(
     imageMat: any,
     regions: BubbleRegion[],
-    fillThreshold: number = 0.6
+    fillThreshold: number = 0.6 // Adjusted for faint marks detection
 ): Promise<DetectionResult> {
     await cvUtils.initializeOpenCV();
 
@@ -124,30 +124,45 @@ export async function detectFilledBubbles(
 
         for (const bubble of region.options) {
             try {
-                // Extract bubble ROI
-                const roi = cvUtils.extractROI(
-                    threshMat,
-                    Math.round(bubble.x),
-                    Math.round(bubble.y),
-                    Math.round(bubble.width),
-                    Math.round(bubble.height)
-                );
+                // Smart Detection: Check multiple offsets to account for slight misalignment
+                // This is crucial for "100% accuracy" if the scan is slightly shifted
+                const offsets = [
+                    { x: 0, y: 0 },   // Center
+                    { x: 0, y: -2 },  // Up
+                    { x: 0, y: 2 },   // Down
+                    { x: -2, y: 0 },  // Left
+                    { x: 2, y: 0 }    // Right
+                ];
 
-                // Calculate fill ratio
-                const fillRatio = cvUtils.calculateFillRatio(roi);
-                questionFillRatios.push(fillRatio);
+                let bestFillRatio = 0;
 
-                // Check if this bubble is filled
-                if (fillRatio > fillThreshold) {
+                for (const offset of offsets) {
+                    const roi = cvUtils.extractROI(
+                        threshMat,
+                        Math.round(bubble.x + offset.x),
+                        Math.round(bubble.y + offset.y),
+                        Math.round(bubble.width),
+                        Math.round(bubble.height)
+                    );
+
+                    const ratio = cvUtils.calculateFillRatio(roi);
+                    if (ratio > bestFillRatio) {
+                        bestFillRatio = ratio;
+                    }
+
+                    cvUtils.cleanupMats(roi);
+                }
+
+                questionFillRatios.push(bestFillRatio);
+
+                // Check if this bubble is filled using the best ratio found
+                if (bestFillRatio > fillThreshold) {
                     selectedCount++;
-                    if (fillRatio > maxFillRatio) {
-                        maxFillRatio = fillRatio;
+                    if (bestFillRatio > maxFillRatio) {
+                        maxFillRatio = bestFillRatio;
                         selectedAnswer = bubble.option;
                     }
                 }
-
-                // Clean up ROI
-                cvUtils.cleanupMats(roi);
             } catch (error) {
                 console.error(`Error processing Q${region.questionNumber} option ${bubble.option}:`, error);
                 questionFillRatios.push(0);

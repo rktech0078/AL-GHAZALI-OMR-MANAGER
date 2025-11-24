@@ -3,6 +3,9 @@ import path from "path";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ["pdfkit"],
+  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       config.plugins.push(
@@ -11,6 +14,10 @@ const nextConfig = {
             {
               from: path.resolve(process.cwd(), "node_modules/pdfkit/js/data"),
               to: path.resolve(process.cwd(), ".next/server/vendor-chunks/data"),
+            },
+            {
+              from: path.resolve(process.cwd(), "node_modules/pdfkit/js/data"),
+              to: path.resolve(process.cwd(), ".next/server/chunks/data"),
             },
           ],
         })

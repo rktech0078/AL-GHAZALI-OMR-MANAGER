@@ -11,7 +11,7 @@ interface ResultPageProps {
 export default async function ResultPage({ params }: ResultPageProps) {
     const supabase = await createClient();
 
-    const { data: result, error } = await supabase
+    let { data: result, error } = await supabase
         .from('results')
         .select(`
             *,
@@ -19,6 +19,33 @@ export default async function ResultPage({ params }: ResultPageProps) {
         `)
         .eq('id', params.id)
         .single();
+
+    // If not found with standard client (RLS), and user is teacher/admin, try admin client
+    if (!result) {
+        const { data: { user } } = await supabase.auth.getUser();
+        const role = user?.user_metadata?.role;
+
+        if (role === 'teacher' || role === 'admin') {
+            const { createAdminClient } = await import('@/lib/supabase/admin');
+            const adminClient = createAdminClient();
+
+            const { data: adminResult, error: adminError } = await adminClient
+                .from('results')
+                .select(`
+                    *,
+                    exam:exams(exam_name, exam_date)
+                `)
+                .eq('id', params.id)
+                .single();
+
+            if (adminResult) {
+                result = adminResult;
+                error = null;
+            } else if (adminError) {
+                console.error('Admin fetch error:', adminError);
+            }
+        }
+    }
 
     if (error || !result) {
         console.error('Error fetching result:', error);

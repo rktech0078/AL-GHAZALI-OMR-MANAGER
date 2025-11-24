@@ -3,12 +3,36 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Footer } from '@/components/layout/Footer';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+
+import type { User } from '@supabase/supabase-js';
 
 export default function LandingPage() {
   const [mounted, setMounted] = useState(false);
-
+  const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   useEffect(() => {
     setMounted(true);
+    const checkAuth = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+
+        if (user) {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+          setRole(profile?.role);
+        }
+      } catch (error) {
+        console.error('Error checking auth:', error);
+      }
+    };
+
+    checkAuth();
   }, []);
 
   return (
@@ -53,19 +77,24 @@ export default function LandingPage() {
                 AI-powered OMR solution using mobile cameras. No scanners needed.
                 Fast, accurate, and designed for Pakistani schools.
               </p>
+              {/* Auth Buttons */}
+              {/* Auth Buttons */}
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <Link
-                  href="/signup"
-                  className="px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl hover:scale-105"
-                >
-                  Get Started Free
-                </Link>
-                <Link
-                  href="/login"
-                  className="px-8 py-4 text-lg font-semibold text-gray-700 bg-white border-2 border-gray-300 rounded-full hover:border-gray-400 hover:shadow-lg transition-all"
-                >
-                  Login
-                </Link>
+                {user ? (
+                  <Link
+                    href={role === 'admin' ? '/admin' : role === 'teacher' ? '/teacher' : role === 'student' ? '/student' : '/'}
+                    className="px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl hover:scale-105"
+                  >
+                    Go to Dashboard
+                  </Link>
+                ) : (
+                  <Link
+                    href="/login"
+                    className="px-8 py-4 text-lg font-semibold text-white bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full hover:from-indigo-700 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl hover:scale-105"
+                  >
+                    Login to Portal
+                  </Link>
+                )}
               </div>
             </div>
 
@@ -277,10 +306,10 @@ export default function LandingPage() {
               Join hundreds of schools across Pakistan already using Al-Ghazali OMR
             </p>
             <Link
-              href="/signup"
+              href="/login"
               className="inline-block px-8 py-4 text-lg font-semibold text-indigo-600 bg-white rounded-full hover:bg-gray-100 transition-all shadow-2xl hover:scale-105"
             >
-              Start Free Trial
+              Login Now
             </Link>
           </div>
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useToast } from '@/components/ui/Toast';
 
 // Loading spinner
 const LoadingSpinner = () => (
@@ -74,6 +75,8 @@ export default function EditUserModal({
         }
     }, [user]);
 
+    const { showToast } = useToast();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) return;
@@ -101,10 +104,13 @@ export default function EditUserModal({
                 throw new Error(data.error || 'Failed to update user');
             }
 
+            showToast('User updated successfully', 'success');
             onSuccess();
             onClose();
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'An error occurred');
+            const message = err instanceof Error ? err.message : 'An error occurred';
+            setError(message);
+            showToast(message, 'error');
         } finally {
             setLoading(false);
         }
