@@ -1,0 +1,32 @@
+name: OMR Manager Keep-Alive (Plan A)
+
+on:
+    schedule:
+        # Run every 6 hours (00:00, 06:00, 12:00, 18:00 UTC)
+        - cron: "0 */6 * * *"
+    workflow_dispatch: # Allow manual trigger
+
+jobs:
+    ping:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Ping Keep-Alive Endpoint
+              env:
+                  # Add this secret in your Repo Settings > Secrets and variables > Actions
+                  prod_url: ${{ secrets.PRODUCTION_URL }}
+              run: |
+                  if [ -z "$prod_url" ]; then
+                    echo "Error: PRODUCTION_URL secret is not set!"
+                    echo "Please go to your GitHub Repo -> Settings -> Secrets -> Actions and add 'PRODUCTION_URL' (e.g., https://your-project.vercel.app)"
+                    exit 1
+                  fi
+
+                  echo "Pinging $prod_url/api/cron/keep-alive ..."
+                  response=$(curl -s -o /dev/null -w "%{http_code}" "$prod_url/api/cron/keep-alive")
+
+                  if [ "$response" -eq 200 ]; then
+                    echo "✅ Success! Status Code: $response"
+                  else
+                    echo "❌ Failed! Status Code: $response"
+                    exit 1
+                  fi
