@@ -13,8 +13,39 @@ export default function UploadOmrPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchExams();
-  }, []);
+    const initPage = async () => {
+      try {
+        const supabase = createSupabaseBrowserClient();
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+          router.push('/login');
+          return;
+        }
+
+        // Check if user is a teacher
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.role !== 'teacher') {
+          router.push('/');
+          return;
+        }
+
+        // Fetch exams after auth check
+        await fetchExams();
+      } catch (err) {
+        console.error('Init error:', err);
+        setError('Failed to initialize page');
+        setLoading(false);
+      }
+    };
+
+    initPage();
+  }, [router]);
 
   const fetchExams = async () => {
     try {

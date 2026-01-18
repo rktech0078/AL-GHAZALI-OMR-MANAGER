@@ -15,6 +15,17 @@ export async function GET(
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Get current user's role and verify admin access
+        const { data: currentUser } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        if (!currentUser || currentUser.role !== 'admin') {
+            return NextResponse.json({ error: 'Forbidden - Admin access required' }, { status: 403 });
+        }
+
         const { data: school, error } = await supabase
             .from('schools')
             .select('*')

@@ -95,7 +95,7 @@ export default async function StudentDashboard() {
       {/* Welcome Header */}
       <div className="mb-8 p-6 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg">
         <h1 className="text-3xl font-bold text-white">
-          {greeting}, {profile?.full_name || 'Student'}! 🎓
+          {greeting}, {profile?.full_name || 'Student'}!
         </h1>
         <p className="mt-2 text-indigo-100">
           {profile?.class && `Class: ${profile.class}`}
@@ -169,21 +169,21 @@ export default async function StudentDashboard() {
             {stats.avgPercentage >= 80 && (
               <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm text-green-800">
-                  🌟 Excellent performance! Keep up the great work!
+                  Excellent performance! Keep up the great work!
                 </p>
               </div>
             )}
             {stats.avgPercentage >= 60 && stats.avgPercentage < 80 && (
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                 <p className="text-sm text-blue-800">
-                  👍 Good job! With a little more effort, you can achieve excellence!
+                  Good job! With a little more effort, you can achieve excellence!
                 </p>
               </div>
             )}
             {stats.avgPercentage < 60 && stats.avgPercentage > 0 && (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <p className="text-sm text-yellow-800">
-                  💪 Keep practicing! Every effort counts towards improvement!
+                  Keep practicing! Every effort counts towards improvement!
                 </p>
               </div>
             )}
@@ -204,7 +204,7 @@ export default async function StudentDashboard() {
                   className="flex items-center justify-between p-2 text-sm text-gray-700 bg-gray-50 rounded-md hover:bg-gray-100"
                 >
                   <span>My Profile</span>
-                  <span>👤</span>
+                  <DocumentIcon />
                 </Link>
               </div>
             </div>

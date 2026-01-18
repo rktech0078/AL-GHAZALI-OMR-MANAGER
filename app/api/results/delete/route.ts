@@ -11,8 +11,51 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
+        // Get user's role for authorization checks
+        const { data: profile } = await supabase
+            .from('users')
+            .select('role')
+            .eq('id', user.id)
+            .single();
+
+        const userRole = profile?.role;
+
         const body = await request.json();
         const { submissionIds, examId, type } = body;
+
+        // Ownership verification for non-admin users
+        if (userRole !== 'admin') {
+            if (type === 'single' && submissionIds && submissionIds.length > 0) {
+                // Verify user owns the exams associated with these results
+                const { data: results } = await supabase
+                    .from('results')
+                    .select('exam_id')
+                    .in('id', submissionIds);
+
+                const uniqueExamIds = Array.from(new Set(results?.map(r => r.exam_id) || []));
+                const examIds = uniqueExamIds;
+                const { data: exams } = await supabase
+                    .from('exams')
+                    .select('created_by')
+                    .in('id', examIds);
+
+                const isOwner = exams?.every(e => e.created_by === user.id);
+                if (!isOwner) {
+                    return NextResponse.json({ error: 'Forbidden - You can only delete results from your own exams' }, { status: 403 });
+                }
+            } else if (type === 'all' && examId) {
+                // Verify user owns the exam
+                const { data: exam } = await supabase
+                    .from('exams')
+                    .select('created_by')
+                    .eq('id', examId)
+                    .single();
+
+                if (!exam || exam.created_by !== user.id) {
+                    return NextResponse.json({ error: 'Forbidden - You can only delete results from your own exams' }, { status: 403 });
+                }
+            }
+        }
 
         // Initialize admin client if available for robust deletion
         const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

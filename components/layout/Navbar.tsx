@@ -190,7 +190,7 @@ export function Navbar() {
         <>
             {isLoggingOut && <FullScreenLoader text="Logging out..." />}
             <nav
-                className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled || !isPublicPage
+                className={`fixed top-0 left-0 right-0 z-navbar transition-all duration-300 ${isScrolled || !isPublicPage
                     ? 'bg-white/95 backdrop-blur-md shadow-md'
                     : 'bg-transparent'
                     }`}
@@ -358,14 +358,14 @@ export function Navbar() {
 
             {/* Mobile Sidebar Overlay */}
             <div
-                className={`fixed inset-0 bg-black/50 z-[55] transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                className={`fixed inset-0 bg-black/50 z-mobile-menu-overlay transition-opacity duration-300 md:hidden ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
                     }`}
                 onClick={() => setIsMobileMenuOpen(false)}
             />
 
             {/* Mobile Sidebar */}
             <div
-                className={`fixed top-0 right-0 bottom-0 w-64 bg-white z-[60] shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
+                className={`fixed top-0 right-0 bottom-0 w-64 bg-white z-mobile-menu shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
                     }`}
             >
                 <div className="flex flex-col h-full">

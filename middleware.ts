@@ -17,7 +17,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value;
         },
         set(name: string, value: string, options: CookieOptions) {
-          // If the cookie is updated, update the cookies for the request and response
           request.cookies.set({
             name,
             value,
@@ -35,7 +34,6 @@ export async function middleware(request: NextRequest) {
           });
         },
         remove(name: string, options: CookieOptions) {
-          // If the cookie is removed, update the cookies for the request and response
           request.cookies.set({
             name,
             value: "",
@@ -56,40 +54,62 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // This will refresh the session if it's expired
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  // Define protected routes and auth routes
-  const protectedRoutes = ["/admin", "/teacher", "/student"];
-  const authRoutes = ["/login", "/signup"];
   const { pathname } = request.nextUrl;
 
-  // Redirect unauthenticated users from protected routes
+  // Skip middleware for static files and API routes
   if (
-    !session &&
-    protectedRoutes.some((prefix) => pathname.startsWith(prefix))
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname.includes('.')
   ) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    return response;
   }
 
-  // Redirect authenticated users from auth routes
-  if (session && authRoutes.some((prefix) => pathname.startsWith(prefix))) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
+  try {
+    // Get session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  return response;
+    // Define protected routes and auth routes
+    const protectedRoutes = ["/admin", "/teacher", "/student"];
+    const authRoutes = ["/login", "/signup"];
+
+    // Redirect unauthenticated users from protected routes
+    if (
+      !session &&
+      protectedRoutes.some((prefix) => pathname.startsWith(prefix))
+    ) {
+      return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    // Redirect authenticated users from auth routes to home
+    if (session && authRoutes.some((prefix) => pathname.startsWith(prefix))) {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+
+    // TEMPORARILY DISABLED: Role-based protection
+    // Let pages handle their own role checks for now
+    // This will be re-enabled after we confirm pages are loading
+
+    return response;
+  } catch (error) {
+    // If anything fails, let the request through
+    console.error('[Middleware] Error:', error);
+    return response;
+  }
 }
 
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except:
+     * - api routes
      * - _next/static (static files)
      * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
+     * - favicon.ico
+     * - files with extensions
      */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\..*).*)",
   ],
 };

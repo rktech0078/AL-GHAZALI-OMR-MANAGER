@@ -1,6 +1,29 @@
 import { OMRGenerateForm } from "@/components/omr/omr-generate-form";
+import { createClient } from '@/lib/supabase/server';
+import { redirect } from 'next/navigation';
 
-export default function OMRGeneratePage() {
+export default async function OMRGeneratePage() {
+    const supabase = await createClient();
+
+    // Get current user
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        redirect('/login');
+    }
+
+    // Get user profile and verify role
+    const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    // Redirect if not a teacher
+    if (profile?.role !== 'teacher') {
+        redirect('/');
+    }
+
     return (
         <div className="container mx-auto py-10 px-4">
             <div className="max-w-4xl mx-auto">

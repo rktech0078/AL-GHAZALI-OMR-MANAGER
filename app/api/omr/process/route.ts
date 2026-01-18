@@ -128,6 +128,28 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Authorization check - verify user can access this exam's submissions
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (profile?.role !== 'admin') {
+      const { data: exam } = await supabase
+        .from('exams')
+        .select('created_by')
+        .eq('id', examId)
+        .single();
+
+      if (!exam || exam.created_by !== user.id) {
+        return NextResponse.json(
+          { error: 'Forbidden - You can only view submissions from your own exams' },
+          { status: 403 }
+        );
+      }
+    }
+
     // Fetch submissions
     const { data: submissions, error: submissionsError } = await supabase
       .from('submissions')

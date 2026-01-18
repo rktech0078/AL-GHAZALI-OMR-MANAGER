@@ -172,7 +172,7 @@ export default function LandingPage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                📱 Mobile First
+                Mobile First
               </h3>
               <p className="text-gray-600">
                 Just use your phone camera to capture OMR sheets. No expensive scanners needed!
@@ -197,7 +197,7 @@ export default function LandingPage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                ⚡ AI Powered
+                AI Powered
               </h3>
               <p className="text-gray-600">
                 Advanced AI ensures 95%+ accuracy even with poor image quality or lighting.
@@ -222,7 +222,7 @@ export default function LandingPage() {
                 </svg>
               </div>
               <h3 className="text-2xl font-bold text-gray-900 mb-4">
-                🔒 Secure & Private
+                Secure & Private
               </h3>
               <p className="text-gray-600">
                 Bank-level security. Your student data is encrypted and protected at all times.

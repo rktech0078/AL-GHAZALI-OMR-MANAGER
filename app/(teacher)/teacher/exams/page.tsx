@@ -55,7 +55,23 @@ function MyExamsContent() {
 
                 if (!user) {
                     console.log('No user found, redirecting...');
+                    if (mounted) setLoading(false);
                     router.push('/login');
+                    return;
+                }
+
+                // Check if user is a teacher
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.role !== 'teacher') {
+                    console.log('User is not a teacher, redirecting...');
+                    if (mounted) setLoading(false);
+                    showToast('Access denied. This page is only for teachers.', 'error');
+                    router.push('/');
                     return;
                 }
 
@@ -83,19 +99,19 @@ function MyExamsContent() {
 
         fetchExams();
 
-        // Safety timeout to prevent infinite loading
-        const timeoutId = setTimeout(() => {
-            if (mounted && loading) {
-                console.warn('Safety timeout triggered for exams loading');
-                setLoading(false);
-            }
-        }, 5000);
+        // Refetch when window regains focus
+        const handleFocus = () => {
+            console.log('Window focused, refetching exams...');
+            fetchExams();
+        };
+
+        window.addEventListener('focus', handleFocus);
 
         return () => {
             mounted = false;
-            clearTimeout(timeoutId);
+            window.removeEventListener('focus', handleFocus);
         };
-    }, [router, showToast, loading]);
+    }, [router, showToast]);
 
     const handleGenerateOMR = async (exam: Exam) => {
         try {

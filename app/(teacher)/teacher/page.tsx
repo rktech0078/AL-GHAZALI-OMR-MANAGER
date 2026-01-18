@@ -8,45 +8,52 @@ import {
 } from '@/components/ui/Icons';
 import Link from 'next/link';
 
+
 async function getTeacherStats(teacherId: string) {
+  console.log('[Dashboard] Starting getTeacherStats for:', teacherId);
+  const start = Date.now();
   const supabase = await createClient();
 
-  // Get teacher's exam counts
-  const [
-    { count: totalExams },
-    { count: publishedExams },
-    { count: draftExams },
-  ] = await Promise.all([
-    supabase.from('exams').select('*', { count: 'exact', head: true }).eq('teacher_id', teacherId),
-    supabase.from('exams').select('*', { count: 'exact', head: true }).eq('teacher_id', teacherId).eq('status', 'published'),
-    supabase.from('exams').select('*', { count: 'exact', head: true }).eq('teacher_id', teacherId).eq('status', 'draft'),
-  ]);
+  try {
+    const [
+      { count: totalExams },
+      { count: publishedExams },
+      { count: draftExams },
+      { data: teacherExams }
+    ] = await Promise.all([
+      supabase.from('exams').select('*', { count: 'exact', head: true }).eq('created_by', teacherId),
+      supabase.from('exams').select('*', { count: 'exact', head: true }).eq('created_by', teacherId).eq('status', 'published'),
+      supabase.from('exams').select('*', { count: 'exact', head: true }).eq('created_by', teacherId).eq('status', 'draft'),
+      supabase.from('exams').select('id').eq('created_by', teacherId)
+    ]);
 
-  // Get teacher's exam IDs first
-  const { data: teacherExams } = await supabase
-    .from('exams')
-    .select('id')
-    .eq('teacher_id', teacherId);
+    console.log('[Dashboard] Basic stats fetched in:', Date.now() - start, 'ms');
 
-  const examIds = teacherExams?.map(exam => exam.id) || [];
+    let resultsCount = 0;
+    if (teacherExams && teacherExams.length > 0) {
+      const examIds = teacherExams.map(e => e.id);
+      const { count } = await supabase
+        .from('results')
+        .select('*', { count: 'exact', head: true })
+        .in('exam_id', examIds);
+      resultsCount = count || 0;
+    }
 
-  // Get total results processed for these exams
-  let resultsCount = 0;
-  if (examIds.length > 0) {
-    const { count } = await supabase
-      .from('results')
-      .select('*', { count: 'exact', head: true })
-      .in('exam_id', examIds);
-
-    resultsCount = count || 0;
+    return {
+      totalExams: totalExams || 0,
+      publishedExams: publishedExams || 0,
+      draftExams: draftExams || 0,
+      resultsCount,
+    };
+  } catch (error) {
+    console.error('[Dashboard] Error in getTeacherStats:', error);
+    return {
+      totalExams: 0,
+      publishedExams: 0,
+      draftExams: 0,
+      resultsCount: 0,
+    };
   }
-
-  return {
-    totalExams: totalExams || 0,
-    publishedExams: publishedExams || 0,
-    draftExams: draftExams || 0,
-    resultsCount,
-  };
 }
 
 async function getRecentExams(teacherId: string) {
@@ -55,7 +62,7 @@ async function getRecentExams(teacherId: string) {
   const { data: exams } = await supabase
     .from('exams')
     .select('*')
-    .eq('teacher_id', teacherId)
+    .eq('created_by', teacherId)
     .order('created_at', { ascending: false })
     .limit(5);
 
@@ -76,12 +83,21 @@ export default async function TeacherDashboard() {
     );
   }
 
-  // Get user profile
+  // Get user profile and verify role
   const { data: profile } = await supabase
     .from('users')
-    .select('full_name, email')
+    .select('full_name, email, role')
     .eq('id', user.id)
     .single();
+
+  // Redirect if not a teacher
+  if (profile?.role !== 'teacher') {
+    return (
+      <div className="container p-4 mx-auto">
+        <p>Access denied. This page is only for teachers.</p>
+      </div>
+    );
+  }
 
   const stats = await getTeacherStats(user.id);
   const recentExams = await getRecentExams(user.id);
@@ -91,7 +107,7 @@ export default async function TeacherDashboard() {
       {/* Welcome Header */}
       <div className="mb-10">
         <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-gray-900 to-gray-600 tracking-tight">
-          Welcome back, {profile?.full_name?.split(' ')[0] || 'Teacher'}! 👋
+          Welcome back, {profile?.full_name?.split(' ')[0] || 'Teacher'}!
         </h1>
         <p className="mt-3 text-lg text-gray-600 max-w-2xl">
           Here's what's happening with your exams and students today.

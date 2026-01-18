@@ -53,7 +53,22 @@ function ExamDetailContent() {
                 const { data: { user } } = await supabase.auth.getUser();
 
                 if (!user) {
+                    setLoading(false);
                     router.push('/login');
+                    return;
+                }
+
+                // Check if user is a teacher
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('role, school_id')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.role !== 'teacher') {
+                    setLoading(false);
+                    showToast('Access denied. This page is only for teachers.', 'error');
+                    router.push('/');
                     return;
                 }
 
@@ -67,20 +82,14 @@ function ExamDetailContent() {
                 if (examError) throw examError;
                 setExam(examData);
 
-                // Fetch students
-                const { data: teacherData } = await supabase
-                    .from('users')
-                    .select('school_id')
-                    .eq('id', user.id)
-                    .single();
-
-                if (teacherData?.school_id) {
+                // Fetch students using the school_id from profile
+                if (profile?.school_id) {
                     // Fetch students with roll_number and student_class
                     const { data: studentsData, error: studentsError } = await supabase
                         .from('users')
                         .select('id, full_name, email, roll_number, student_class')
                         .eq('role', 'student')
-                        .eq('school_id', teacherData.school_id);
+                        .eq('school_id', profile.school_id);
 
                     if (studentsError) throw studentsError;
                     setStudents(studentsData || []);

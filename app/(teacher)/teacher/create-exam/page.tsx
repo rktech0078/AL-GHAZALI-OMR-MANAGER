@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 export default function CreateExamPage() {
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [authChecking, setAuthChecking] = useState(true);
 
     const [formData, setFormData] = useState({
         exam_name: '',
@@ -17,6 +19,50 @@ export default function CreateExamPage() {
         options_count: 4,
         exam_date: ''
     });
+
+    // Check authentication and role
+    useEffect(() => {
+        const checkAuth = async () => {
+            try {
+                const supabase = createSupabaseBrowserClient();
+                const { data: { user } } = await supabase.auth.getUser();
+
+                if (!user) {
+                    router.push('/login');
+                    return;
+                }
+
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.role !== 'teacher') {
+                    router.push('/');
+                    return;
+                }
+
+                setAuthChecking(false);
+            } catch (err) {
+                console.error('Auth check error:', err);
+                router.push('/login');
+            }
+        };
+
+        checkAuth();
+    }, [router]);
+
+    if (authChecking) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -37,6 +83,9 @@ export default function CreateExamPage() {
             if (!response.ok) {
                 throw new Error(data.error || 'Failed to create exam');
             }
+
+            // Force refresh the router cache
+            router.refresh();
 
             // Redirect to Question Builder
             router.push(`/teacher/exams/${data.exam.id}/questions`);

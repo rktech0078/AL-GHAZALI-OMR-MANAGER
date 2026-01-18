@@ -31,6 +31,37 @@ body {
   }
 }
 
+/* Typography utilities */
+@layer components {
+  .heading-1 {
+    @apply text-4xl font-extrabold text-gray-900;
+  }
+
+  .heading-2 {
+    @apply text-3xl font-bold text-gray-900;
+  }
+
+  .heading-3 {
+    @apply text-2xl font-semibold text-gray-900;
+  }
+
+  .heading-4 {
+    @apply text-xl font-semibold text-gray-900;
+  }
+
+  .body-large {
+    @apply text-lg text-gray-700;
+  }
+
+  .body {
+    @apply text-base text-gray-700;
+  }
+
+  .body-small {
+    @apply text-sm text-gray-600;
+  }
+}
+
 /* Custom animations */
 @keyframes slide-in-right {
   from {

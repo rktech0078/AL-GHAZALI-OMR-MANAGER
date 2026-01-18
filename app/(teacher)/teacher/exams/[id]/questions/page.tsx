@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 
 interface Question {
     id?: string;
@@ -24,6 +25,29 @@ export default function QuestionBuilderPage() {
     useEffect(() => {
         const fetchQuestions = async () => {
             try {
+                // Check authentication and role first
+                const supabase = createSupabaseBrowserClient();
+                const { data: { user } } = await supabase.auth.getUser();
+
+                if (!user) {
+                    router.push('/login');
+                    return;
+                }
+
+                const { data: profile } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', user.id)
+                    .single();
+
+                if (profile?.role !== 'teacher') {
+                    setError('Access denied. This page is only for teachers.');
+                    setLoading(false);
+                    router.push('/');
+                    return;
+                }
+
+                // Now fetch questions
                 const response = await fetch(`/api/teacher/exams/${params.id}/questions`);
                 const data = await response.json();
 
@@ -43,7 +67,7 @@ export default function QuestionBuilderPage() {
         if (params.id) {
             fetchQuestions();
         }
-    }, [params.id]);
+    }, [params.id, router]);
 
     const handleAnswerChange = (questionNumber: number, answer: string) => {
         setQuestions(prev => prev.map(q =>

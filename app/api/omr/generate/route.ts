@@ -1,10 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OMRPDFGenerator } from "@/lib/omr/pdf-generator";
+import { createClient } from "@/lib/supabase/server";
 import fs from "fs";
 import path from "path";
 
 export async function POST(request: NextRequest) {
   try {
+    // Authentication check
+    const supabase = createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return new NextResponse('Unauthorized', { status: 401 });
+    }
+
+    // Role-based authorization - only admin and teacher can generate PDFs
+    const { data: profile } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile || !['admin', 'teacher'].includes(profile.role)) {
+      return new NextResponse('Forbidden', { status: 403 });
+    }
+
     const body = await request.json();
     const {
       students,

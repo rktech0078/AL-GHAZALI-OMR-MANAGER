@@ -46,6 +46,26 @@ export default function ExamResultsPage() {
         try {
             const supabase = createSupabaseBrowserClient();
 
+            // Check authentication and role first
+            const { data: { user } } = await supabase.auth.getUser();
+
+            if (!user) {
+                router.push('/login');
+                return;
+            }
+
+            const { data: profile } = await supabase
+                .from('users')
+                .select('role')
+                .eq('id', user.id)
+                .single();
+
+            if (profile?.role !== 'teacher') {
+                showToast('Access denied. This page is only for teachers.', 'error');
+                router.push('/');
+                return;
+            }
+
             // Fetch exam details
             const { data: examData, error: examError } = await supabase
                 .from('exams')
