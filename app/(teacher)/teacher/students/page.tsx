@@ -34,58 +34,70 @@ export default function MyStudentsPage() {
 
     const fetchStudents = async () => {
         console.log('[StudentsPage] Starting fetchStudents...');
+
+        // Safety timeout
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Request timed out')), 10000)
+        );
+
         try {
             setLoading(true);
             const supabase = createSupabaseBrowserClient();
-            const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-            console.log('[StudentsPage] Auth user:', user?.id, 'Error:', authError);
+            // Race between fetch and timeout
+            await Promise.race([
+                (async () => {
+                    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-            if (!user) {
-                console.warn('[StudentsPage] No user found');
-                setError('Please log in to view students.');
-                setLoading(false);
-                return;
-            }
+                    console.log('[StudentsPage] Auth user:', user?.id, 'Error:', authError);
 
-            // Get teacher's school_id and verify role
-            const { data: teacherData, error: teacherError } = await supabase
-                .from('users')
-                .select('school_id, role')
-                .eq('id', user.id)
-                .single();
+                    if (!user) {
+                        console.warn('[StudentsPage] No user found');
+                        setError('Please log in to view students.');
+                        return;
+                    }
 
-            if (teacherError) {
-                console.error('Teacher data error:', teacherError);
-                throw new Error(`Failed to fetch teacher data: ${teacherError.message}`);
-            }
+                    // Get teacher's school_id and verify role
+                    const { data: teacherData, error: teacherError } = await supabase
+                        .from('users')
+                        .select('school_id, role')
+                        .eq('id', user.id)
+                        .single();
 
-            // Check if user is a teacher
-            if (teacherData?.role !== 'teacher') {
-                setError('Access denied. This page is only for teachers.');
-                setLoading(false);
-                return;
-            }
+                    if (teacherError) {
+                        console.error('Teacher data error:', teacherError);
+                        throw new Error(`Failed to fetch teacher data: ${teacherError.message}`);
+                    }
 
-            if (!teacherData?.school_id) {
-                throw new Error('Your account is not associated with a school. Please contact an administrator to assign you to a school.');
-            }
+                    // Check if user is a teacher
+                    if (teacherData?.role !== 'teacher') {
+                        setError('Access denied. This page is only for teachers.');
+                        return;
+                    }
 
-            // Fetch students of the same school
-            const { data, error } = await supabase
-                .from('users')
-                .select('*')
-                .eq('school_id', teacherData.school_id)
-                .eq('role', 'student')
-                .order('full_name', { ascending: true });
+                    if (!teacherData?.school_id) {
+                        throw new Error('Your account is not associated with a school. Please contact an administrator to assign you to a school.');
+                    }
 
-            if (error) {
-                console.error('[StudentsPage] Error fetching students list:', error);
-                throw error;
-            }
+                    // Fetch students of the same school
+                    const { data, error } = await supabase
+                        .from('users')
+                        .select('*')
+                        .eq('school_id', teacherData.school_id)
+                        .eq('role', 'student')
+                        .order('full_name', { ascending: true });
 
-            console.log('[StudentsPage] Students fetched:', data?.length);
-            setStudents(data || []);
+                    if (error) {
+                        console.error('[StudentsPage] Error fetching students list:', error);
+                        throw error;
+                    }
+
+                    console.log('[StudentsPage] Students fetched:', data?.length);
+                    setStudents(data || []);
+                })(),
+                timeoutPromise
+            ]);
+
         } catch (err: any) {
             console.error('[StudentsPage] Catch block error:', err);
             setError(`Failed to load students: ${err?.message || 'Unknown error'}`);
