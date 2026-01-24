@@ -3,37 +3,17 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { Footer } from '@/components/layout/Footer';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-
-import type { User } from '@supabase/supabase-js';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function LandingPage() {
   const [mounted, setMounted] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<string | null>(null);
+  const { user, profile, loading } = useAuth();
+
   useEffect(() => {
     setMounted(true);
-    const checkAuth = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data: { user } } = await supabase.auth.getUser();
-        setUser(user);
-
-        if (user) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', user.id)
-            .single();
-          setRole(profile?.role);
-        }
-      } catch (error) {
-        console.error('Error checking auth:', error);
-      }
-    };
-
-    checkAuth();
   }, []);
+
+  const role = profile?.role;
 
   return (
     <div className="min-h-screen bg-white">

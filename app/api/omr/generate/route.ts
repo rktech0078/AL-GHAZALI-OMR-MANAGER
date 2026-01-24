@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const {
       students,
       examName = "OMR Answer Sheet",
-      schoolName = "Al-Ghazali OMR Manager",
+      schoolName = "AL-GHAZALI HIGH SCHOOL",
       questions = 20,
       options = 4,
       showKey = false,

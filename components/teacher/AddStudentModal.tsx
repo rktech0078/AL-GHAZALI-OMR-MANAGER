@@ -37,6 +37,7 @@ export default function AddStudentModal({ isOpen, onClose, onSuccess }: AddStude
             if (result.error) {
                 setError(result.error);
             } else {
+                setFormData({ full_name: '', email: '', roll_number: '' });
                 onSuccess();
                 onClose();
             }

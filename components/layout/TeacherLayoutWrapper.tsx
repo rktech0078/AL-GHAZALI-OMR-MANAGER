@@ -1,8 +1,8 @@
 'use client';
 
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 import { DashboardLayout } from './DashboardLayout';
 
 interface TeacherLayoutWrapperProps {
@@ -10,35 +10,14 @@ interface TeacherLayoutWrapperProps {
 }
 
 export function TeacherLayoutWrapper({ children }: TeacherLayoutWrapperProps) {
-    const [userInfo, setUserInfo] = useState<{ name: string; email: string } | undefined>();
-    const [loading, setLoading] = useState(true);
+    const { user, profile, loading } = useAuth();
     const router = useRouter();
 
     useEffect(() => {
-        const fetchUserInfo = async () => {
-            const supabase = createSupabaseBrowserClient();
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user) {
-                router.push('/login');
-                return;
-            }
-
-            const { data: profile } = await supabase
-                .from('users')
-                .select('full_name, email')
-                .eq('id', user.id)
-                .single();
-
-            setUserInfo({
-                name: profile?.full_name || 'Teacher',
-                email: profile?.email || user.email || ''
-            });
-            setLoading(false);
-        };
-
-        fetchUserInfo();
-    }, [router]);
+        if (!loading && !user) {
+            router.push('/login');
+        }
+    }, [user, loading, router]);
 
     if (loading) {
         return (
@@ -50,6 +29,11 @@ export function TeacherLayoutWrapper({ children }: TeacherLayoutWrapperProps) {
             </div>
         );
     }
+
+    const userInfo = profile ? {
+        name: profile.full_name,
+        email: profile.email
+    } : undefined;
 
     return (
         <DashboardLayout role="teacher" userInfo={userInfo}>

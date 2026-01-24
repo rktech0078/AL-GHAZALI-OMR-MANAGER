@@ -166,7 +166,7 @@ function ExamDetailContent() {
             body: JSON.stringify({
                 students: selectedStudentsList,
                 examName: exam?.exam_name,
-                schoolName: 'Al-Ghazali School',
+                schoolName: 'AL-GHAZALI HIGH SCHOOL',
                 questions: exam?.total_questions,
                 options: exam?.options_count,
                 showKey: true,

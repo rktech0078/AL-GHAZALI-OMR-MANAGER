@@ -31,15 +31,12 @@ export class OMRPDFGenerator {
     private options: OMRGeneratorOptions;
     private pageMargin = 40;
 
-    // Professional color scheme
+    // Enterprise B&W color scheme
     private colors = {
-        primary: '#5B4BDA',      // Purple
-        secondary: '#06B6D4',    // Cyan
-        dark: '#1F2937',         // Dark gray
-        medium: '#6B7280',       // Medium gray
-        light: '#E5E7EB',        // Light gray
-        accent: '#10B981',       // Green
-        warning: '#F59E0B'       // Amber
+        black: '#000000',
+        white: '#FFFFFF',
+        gray: '#E5E7EB',
+        darkGray: '#4B5563'
     };
 
     constructor(options: OMRGeneratorOptions = {}) {
@@ -48,14 +45,14 @@ export class OMRPDFGenerator {
             options: 4,
             showKey: false,
             answerKey: {},
-            schoolName: "Al-Ghazali School",
+            schoolName: "AL-GHAZALI HIGH SCHOOL",
             examName: "OMR Answer Sheet",
             ...options,
         };
 
         this.doc = new PDFDocument({
             size: "A4",
-            margin: this.pageMargin,
+            margins: { top: 30, bottom: 0, left: this.pageMargin, right: this.pageMargin },
             autoFirstPage: false,
             bufferPages: true,
         });
@@ -65,25 +62,28 @@ export class OMRPDFGenerator {
 
     private loadFont() {
         try {
-            const fontPath = path.join(process.cwd(), "public", "fonts", "Roboto-Regular.ttf");
+            const fontPath = path.join(process.cwd(), "public", "fonts", "Inter-Bold.ttf");
             if (fs.existsSync(fontPath)) {
-                this.doc.registerFont("Roboto-Regular", fontPath);
+                this.doc.registerFont("Inter-Bold", fontPath);
+                this.doc.font("Inter-Bold");
             } else {
-                this.doc.font('Helvetica');
+                this.doc.font('Helvetica-Bold');
             }
         } catch (error) {
-            this.doc.font('Helvetica');
+            this.doc.font('Helvetica-Bold');
         }
     }
 
     public async generate(): Promise<Buffer> {
         this.loadFont();
         await this.addPageForStudent({
-            id: this.options.studentId || '',
-            name: this.options.studentName || '',
+            id: this.options.studentId || 'N/A',
+            name: this.options.studentName || 'Sample Student',
             rollNumber: this.options.rollNumber,
             className: this.options.studentClass
         });
+
+        this.addFooter(); // Call once at the end
         this.doc.end();
 
         return new Promise<Buffer>((resolve, reject) => {
@@ -99,6 +99,7 @@ export class OMRPDFGenerator {
             await this.addPageForStudent(student);
         }
 
+        this.addFooter(); // Call once at the end
         this.doc.end();
 
         return new Promise<Buffer>((resolve, reject) => {
@@ -109,346 +110,291 @@ export class OMRPDFGenerator {
 
     private async addPageForStudent(student: StudentInfo) {
         this.doc.addPage({
-            margins: { top: 30, bottom: 30, left: this.pageMargin, right: this.pageMargin },
+            margins: { top: 30, bottom: 0, left: this.pageMargin, right: this.pageMargin },
         });
 
-        const uniqueId = `OMR-${Date.now()}-${student.id.substring(0, 4)}`;
+        const uniqueId = `OMR-${student.id.substring(0, 4)}-${Math.floor(Math.random() * 1000)}`;
+
+        // Update current student state
+        const originalName = this.options.studentName;
+        const originalId = this.options.studentId;
+        const originalRoll = this.options.rollNumber;
+        const originalClass = this.options.studentClass;
 
         this.options.studentName = student.name;
         this.options.studentId = student.id;
         this.options.rollNumber = student.rollNumber;
         this.options.studentClass = student.className;
 
+        // 1. Add Corner Anchors
+        this.addCornerAnchors();
+
+        // 2. Add Content Header (Refined Alignment)
         await this.addHeader(uniqueId);
+
+        // 3. Add Info Section
         this.addStudentInfo();
+
+        // 4. Add Instructions
         this.addInstructions();
+
+        // 5. Add Answer Grid
         this.addAnswerGrid();
-        this.addFooter();
+
+        // Revert options for next bulk iteration if needed
+        this.options.studentName = originalName;
+        this.options.studentId = originalId;
+        this.options.rollNumber = originalRoll;
+        this.options.studentClass = originalClass;
+    }
+
+    private addCornerAnchors() {
+        const size = 15;
+        const m = 20; // Anchor margin from edge
+
+        this.doc.save();
+        this.doc.fillColor(this.colors.black);
+
+        // Top-Left
+        this.doc.rect(m, m, size, size).fill();
+        // Top-Right
+        this.doc.rect(this.doc.page.width - m - size, m, size, size).fill();
+        // Bottom-Left
+        this.doc.rect(m, this.doc.page.height - m - size, size, size).fill();
+        // Bottom-Right
+        this.doc.rect(this.doc.page.width - m - size, this.doc.page.height - m - size, size, size).fill();
+        this.doc.restore();
     }
 
     private async addHeader(uniqueId: string) {
-        const headerHeight = 85;
-        const headerStartY = this.doc.y;
+        const startY = 45;
+        const qrSize = 65;
+        const logoSize = 55;
+        const midY = startY + (qrSize / 2);
 
-        // Header background
+        // Enterprise Branding Bar (Top)
         this.doc
-            .rect(this.pageMargin - 10, headerStartY - 10, this.doc.page.width - (this.pageMargin * 2) + 20, headerHeight)
-            .fillAndStroke(this.colors.primary, this.colors.primary);
+            .moveTo(this.pageMargin, startY - 15)
+            .lineTo(this.doc.page.width - this.pageMargin, startY - 15)
+            .lineWidth(2)
+            .strokeColor(this.colors.black)
+            .stroke();
 
-        // Logo (Left)
+        // 1. Logo (Left)
+        const logoY = midY - (logoSize / 2);
         if (this.options.logoBuffer) {
-            this.doc.image(this.options.logoBuffer, this.pageMargin + 5, headerStartY + 5, {
-                width: 50,
-                height: 50
-            });
+            this.doc.image(this.options.logoBuffer, this.pageMargin, logoY, { width: logoSize });
         }
 
-        // QR Code (Right) - FIXED for better scanning
-        const qrCodeX = this.doc.page.width - this.pageMargin - 70;
-        const qrDataObj = {
-            e: this.options.examId || 'NO_EXAM',
-            s: this.options.studentId || 'NO_STUDENT'
-        };
-        const qrData = JSON.stringify(qrDataObj);
+        const textStartX = this.pageMargin + (this.options.logoBuffer ? 65 : 0);
 
-        // Generate high-quality QR code
-        const qrCodeData = await QRCode.toDataURL(qrData, {
-            errorCorrectionLevel: "H",  // Highest error correction
-            margin: 2,                   // More margin for better scanning
-            width: 256,                  // Higher resolution
-            color: {
-                dark: '#000000',         // Pure black for maximum contrast
-                light: '#FFFFFF'         // Pure white background
-            }
-        });
-        // QR positioned at top of header (aligned with logo)
-        this.doc.image(qrCodeData, qrCodeX, headerStartY, { width: 70 });
+        // 2. School Info (Perfectly centered vertically with QR/Logo)
+        this.doc.save();
+        this.doc.fillColor(this.colors.black);
 
-        // Center content
-        const leftSafe = this.pageMargin + 65;
-        const rightSafe = this.doc.page.width - this.pageMargin - 80;
-        const centerWidth = rightSafe - leftSafe;
+        // Calculate vertical offset for text block to center it against the 65pt height
+        const textBlockHeight = 28; // Estimate for 16pt + 10pt + gap
+        const textStartY = midY - (textBlockHeight / 2);
 
-        // Exam name
         this.doc
-            .fontSize(18)
+            .fontSize(16)
             .font('Helvetica-Bold')
-            .fillColor('#FFFFFF')
-            .text(this.options.examName || "OMR ANSWER SHEET", leftSafe, headerStartY + 15, {
-                width: centerWidth,
-                align: "center",
-            });
+            .text(this.options.schoolName?.toUpperCase() || "AL-GHAZALI HIGH SCHOOL", textStartX, textStartY);
 
-        // School name
         this.doc
             .fontSize(10)
             .font('Helvetica')
-            .fillColor('#E0E7FF')
-            .text(this.options.schoolName || "Al-Ghazali School", leftSafe, headerStartY + 38, {
-                width: centerWidth,
-                align: "center",
-            });
+            .fillColor(this.colors.darkGray)
+            .text(this.options.examName || "OFFICIAL ANSWER SHEET", textStartX, textStartY + 18);
+        this.doc.restore();
 
-        // Document ID
-        this.doc
-            .fontSize(7)
-            .fillColor('#C7D2FE')
-            .text(`ID: ${uniqueId}`, leftSafe, headerStartY + 55, {
-                width: centerWidth,
-                align: "center",
-            });
+        const qrX = this.doc.page.width - this.pageMargin - qrSize;
+        try {
+            const qrDataObj = { e: this.options.examId || 'N/A', s: this.options.studentId || 'N/A' };
+            const qrCodeData = await QRCode.toDataURL(JSON.stringify(qrDataObj), { errorCorrectionLevel: "H", margin: 0, width: 200 });
+            this.doc.image(qrCodeData, qrX, startY, { width: qrSize });
 
-        this.doc.y = headerStartY + headerHeight + 15;
-        this.doc.fillColor(this.colors.dark);
+            // 4. UID Text (Clearly below QR, refined size)
+            this.doc
+                .fontSize(7) // Increased from 6
+                .font('Helvetica-Bold') // Bold for better visibility
+                .fillColor(this.colors.darkGray)
+                .text(`UID: ${uniqueId}`, qrX, startY + qrSize + 4, { width: qrSize, align: 'center' });
+        } catch (e) { }
+
+        this.doc.y = startY + qrSize + 25;
     }
 
     private addStudentInfo() {
-        // Section Title
-        const titleY = this.doc.y;
-        this.doc
-            .rect(this.pageMargin - 5, titleY - 2, this.doc.page.width - (this.pageMargin * 2) + 10, 18)
-            .fill(this.colors.primary);
-
-        this.doc
-            .fontSize(11)
-            .font('Helvetica-Bold')
-            .fillColor('#FFFFFF')
-            .text("STUDENT INFORMATION", this.pageMargin, titleY + 2);
-
-        this.doc.moveDown(0.8);
-        this.doc.fillColor(this.colors.dark);
+        const startY = this.doc.y;
+        const boxHeight = 22;
+        const labelWidth = 90;
+        const fullWidth = this.doc.page.width - this.pageMargin * 2;
+        const halfWidth = fullWidth / 2;
 
         const fields = [
-            { label: "Student Name", value: this.options.studentName },
-            { label: "Roll Number", value: this.options.rollNumber },
-            { label: "Class/Section", value: this.options.studentClass },
-            { label: "Exam ID", value: this.options.examId }
+            { label: "NAME", value: this.options.studentName },
+            { label: "ROLL NO", value: this.options.rollNumber },
+            { label: "CLASS", value: this.options.studentClass }
         ];
 
-        const fieldHeight = 26;
-        const labelWidth = 100;
+        this.doc.save();
+        this.doc.lineWidth(0.5).strokeColor(this.colors.black);
 
-        fields.forEach((field) => {
-            const currentY = this.doc.y;
-
-            // Label
-            this.doc
-                .fontSize(9)
-                .font('Helvetica-Bold')
-                .fillColor(this.colors.medium)
-                .text(`${field.label}:`, this.pageMargin, currentY + 7);
-
-            // Field box
-            this.doc
-                .rect(
-                    this.pageMargin + labelWidth,
-                    currentY,
-                    this.doc.page.width - this.pageMargin * 2 - labelWidth,
-                    fieldHeight
-                )
-                .lineWidth(1)
-                .strokeColor(this.colors.medium)
-                .fillAndStroke('#FAFAFA', this.colors.medium);
-
-            // Value
+        fields.forEach((field, i) => {
+            const y = startY + (i * boxHeight);
+            this.doc.rect(this.pageMargin, y, fullWidth, boxHeight).stroke();
+            this.doc.moveTo(this.pageMargin + labelWidth, y).lineTo(this.pageMargin + labelWidth, y + boxHeight).stroke();
+            this.doc.fontSize(8).font('Helvetica-Bold').text(field.label, this.pageMargin + 10, y + 7);
             if (field.value) {
-                this.doc
-                    .fontSize(10)
-                    .font('Helvetica-Bold')
-                    .fillColor(this.colors.dark)
-                    .text(
-                        field.value,
-                        this.pageMargin + labelWidth + 5,
-                        currentY + 7,
-                        { width: this.doc.page.width - this.pageMargin * 2 - labelWidth - 10 }
-                    );
+                this.doc.fontSize(10).font('Helvetica').text(field.value.toString().toUpperCase(), this.pageMargin + labelWidth + 10, y + 6);
             }
-
-            this.doc.y = currentY + fieldHeight + 5;
         });
 
-        this.doc.moveDown(0.4);
+        // Split row for Exam ID and Date
+        const splitY = startY + (fields.length * boxHeight);
+
+        // Date Box
+        this.doc.rect(this.pageMargin, splitY, halfWidth, boxHeight).stroke();
+        this.doc.moveTo(this.pageMargin + labelWidth, splitY).lineTo(this.pageMargin + labelWidth, splitY + boxHeight).stroke();
+        this.doc.fontSize(8).font('Helvetica-Bold').text("DATE", this.pageMargin + 10, splitY + 7);
+        const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, ' / ');
+        this.doc.fontSize(10).font('Helvetica').text(dateStr, this.pageMargin + labelWidth + 10, splitY + 6);
+
+        // Exam ID Box
+        this.doc.rect(this.pageMargin + halfWidth, splitY, halfWidth, boxHeight).stroke();
+        this.doc.moveTo(this.pageMargin + halfWidth + labelWidth - 25, splitY).lineTo(this.pageMargin + halfWidth + labelWidth - 25, splitY + boxHeight).stroke();
+        this.doc.fontSize(8).font('Helvetica-Bold').text("EXAM ID", this.pageMargin + halfWidth + 10, splitY + 7);
+        this.doc.fontSize(9).font('Helvetica').text(this.options.examId || "---", this.pageMargin + halfWidth + labelWidth - 20, splitY + 7);
+
+        this.doc.restore();
+        this.doc.y = splitY + boxHeight + 15;
     }
 
     private addInstructions() {
-        const boxY = this.doc.y;
-        const boxHeight = 72;
+        const startY = this.doc.y;
+        const width = this.doc.page.width - this.pageMargin * 2;
 
-        // Instructions box
-        this.doc
-            .rect(this.pageMargin, boxY, this.doc.page.width - this.pageMargin * 2, boxHeight)
-            .lineWidth(2)
-            .fillAndStroke('#FEF3C7', '#F59E0B');
+        this.doc.save();
+        this.doc.rect(this.pageMargin, startY, width, 45).lineWidth(0.8)
+            .dash(3, { space: 3 })
+            .strokeColor(this.colors.darkGray)
+            .stroke();
 
-        // Title bar
-        this.doc
-            .rect(this.pageMargin + 5, boxY + 5, 110, 15)
-            .fill(this.colors.warning);
-
-        this.doc
-            .fontSize(10)
-            .font('Helvetica-Bold')
-            .fillColor('#FFFFFF')
-            .text("INSTRUCTIONS", this.pageMargin + 15, boxY + 8);
-
-        // Instructions
-        const instructions = [
-            "1. Use DARK pencil (HB/2B) or BLACK pen only",
-            "2. Fill bubbles COMPLETELY - like this: [FILLED]",
-            "3. Do NOT make stray marks outside bubbles",
-            "4. Erase cleanly if you change an answer",
-            "5. Fill ONLY ONE bubble per question"
+        this.doc.undash();
+        const inst = [
+            "• Use BLACK pen or DARK pencil only. Fill the bubble COMPLETELY.",
+            "• Do not fold, stray mark, or use whitener on this sheet.",
         ];
 
-        this.doc
-            .fontSize(7.5)
-            .font('Helvetica')
-            .fillColor(this.colors.dark);
-
-        instructions.forEach((instruction, index) => {
-            this.doc.text(instruction, this.pageMargin + 10, boxY + 28 + (index * 8.5), {
-                width: this.doc.page.width - this.pageMargin * 2 - 20
-            });
-        });
-
-        this.doc.y = boxY + boxHeight + 12;
+        this.doc.fontSize(8).font('Helvetica-Bold').fillColor(this.colors.black).text("IMPORTANT INSTRUCTIONS:", this.pageMargin + 10, startY + 8);
+        this.doc.font('Helvetica').fontSize(7);
+        inst.forEach((t, i) => this.doc.text(t, this.pageMargin + 15, startY + 18 + (i * 9)));
+        this.doc.restore();
+        this.doc.y = startY + 55;
     }
 
     private addAnswerGrid() {
-        // Section Title
-        const titleY = this.doc.y;
-        this.doc
-            .rect(this.pageMargin - 5, titleY - 2, this.doc.page.width - (this.pageMargin * 2) + 10, 18)
-            .fill(this.colors.primary);
-
-        this.doc
-            .fontSize(11)
-            .font('Helvetica-Bold')
-            .fillColor('#FFFFFF')
-            .text("ANSWER SECTION", this.pageMargin, titleY + 2);
-
-        this.doc.moveDown(0.6);
-        this.doc.fillColor(this.colors.dark);
-
-        const gridStartY = this.doc.y;
-        const questionsPerColumn = 15;
-        const maxColumnsPerPage = 4;
-        const totalQuestions = this.options.totalQuestions || 20;
-        const totalColumns = Math.ceil(totalQuestions / questionsPerColumn);
-
-        const bubbleRadius = 7.5; // Bigger bubbles for easier filling
-        const rowHeight = 21;
-        const questionNumWidth = 26;
+        const startY = this.doc.y;
+        const totalQuestions = this.options.totalQuestions || 50;
         const optionsCount = this.options.options || 4;
 
-        let currentPageIndex = 0;
-        let startPageY = gridStartY;
+        // Dynamic Column Logic
+        let questionsPerCol = 25;
+        if (totalQuestions <= 20) questionsPerCol = 20;
+        else if (totalQuestions <= 60) questionsPerCol = Math.ceil(totalQuestions / 2);
+        else questionsPerCol = 25;
 
-        for (let i = 1; i <= totalQuestions; i++) {
-            const globalColIndex = Math.floor((i - 1) / questionsPerColumn);
-            const pageIndex = Math.floor(globalColIndex / maxColumnsPerPage);
-            const colIndexOnPage = globalColIndex % maxColumnsPerPage;
-            const rowIndex = (i - 1) % questionsPerColumn;
+        const cols = Math.ceil(totalQuestions / questionsPerCol);
+        const colGap = 30;
+        const colWidth = (this.doc.page.width - this.pageMargin * 2 - (colGap * (cols - 1))) / cols;
 
-            if (pageIndex > currentPageIndex) {
-                this.doc.addPage({
-                    margins: { top: 30, bottom: 30, left: this.pageMargin, right: this.pageMargin },
-                });
-                currentPageIndex = pageIndex;
-                startPageY = this.doc.y + 20;
-            }
+        // Dynamic Spacing to fill page for low question counts
+        let rowHeight = 16;
+        let bubbleRadius = 5;
+        let bubbleSpacing = 17;
 
-            const columnsOnThisPage = Math.min(maxColumnsPerPage, totalColumns - pageIndex * maxColumnsPerPage);
-            const columnSpacing = 22;
-            const columnWidth = (this.doc.page.width - this.pageMargin * 2 - columnSpacing * (columnsOnThisPage - 1)) / columnsOnThisPage;
-            const optionCellWidth = (columnWidth - questionNumWidth) / optionsCount;
-
-            const currentColumnX = this.pageMargin + colIndexOnPage * (columnWidth + columnSpacing);
-            const currentY = startPageY + 18 + rowIndex * rowHeight;
-
-            // Column headers
-            if (rowIndex === 0) {
-                this.doc
-                    .rect(currentColumnX + questionNumWidth - 2, startPageY, optionCellWidth * optionsCount + 4, 14)
-                    .fill(this.colors.light);
-
-                for (let j = 0; j < optionsCount; j++) {
-                    this.doc
-                        .fillColor(this.colors.primary)
-                        .fontSize(9)
-                        .font('Helvetica-Bold')
-                        .text(
-                            String.fromCharCode(65 + j),
-                            currentColumnX + questionNumWidth + j * optionCellWidth,
-                            startPageY + 2,
-                            { width: optionCellWidth, align: "center" }
-                        );
-                }
-            }
-
-            // Question number
-            const qNumBgWidth = 20;
-            this.doc
-                .rect(currentColumnX, currentY - 2, qNumBgWidth, 15)
-                .fill(i % 2 === 0 ? '#F9FAFB' : '#FFFFFF');
-
-            this.doc
-                .fillColor(this.colors.dark)
-                .fontSize(9)
-                .font('Helvetica-Bold')
-                .text(`${i}`, currentColumnX + 2, currentY + 1, { width: qNumBgWidth - 4, align: "center" });
-
-            // Answer bubbles
-            for (let j = 0; j < optionsCount; j++) {
-                const bubbleX = currentColumnX + questionNumWidth + j * optionCellWidth + optionCellWidth / 2;
-                const bubbleY = currentY + bubbleRadius;
-
-                this.doc
-                    .circle(bubbleX, bubbleY, bubbleRadius)
-                    .lineWidth(1.3)
-                    .strokeColor('#4B5563')
-                    .stroke();
-            }
+        if (totalQuestions <= 20) {
+            rowHeight = 22; // More spread out
+            bubbleRadius = 6.5;
+            bubbleSpacing = 22;
+        } else if (totalQuestions <= 50) {
+            rowHeight = 18;
+            bubbleRadius = 5.5;
+            bubbleSpacing = 19;
         }
 
-        this.doc.fillColor(this.colors.dark);
+        this.doc.save();
+        for (let i = 0; i < totalQuestions; i++) {
+            const colIndex = Math.floor(i / questionsPerCol);
+            const rowIndex = i % questionsPerCol;
+            const x = this.pageMargin + (colIndex * (colWidth + colGap));
+            const y = startY + (rowIndex * rowHeight);
+
+            if (rowIndex % 2 === 0) {
+                this.doc.fillColor('#F9FAFB').rect(x, y, colWidth, rowHeight).fill();
+            }
+
+            // Question Num
+            this.doc.fillColor(this.colors.black).fontSize(8).font('Helvetica-Bold').text(`${i + 1}.`, x + 2, y + 5, { width: 22, align: 'right' });
+
+            // Bubbles
+            for (let j = 0; j < optionsCount; j++) {
+                const bx = x + 35 + (j * bubbleSpacing);
+                const by = y + (rowHeight / 2);
+                this.doc.circle(bx, by, bubbleRadius).lineWidth(0.7).strokeColor(this.colors.black).stroke();
+                this.doc.fontSize(5).font('Helvetica').text(String.fromCharCode(65 + j), bx - 1, by - 2.5, { width: 10 });
+            }
+
+            // Extraordinary Detail: Timing Marks for scanner row tracking
+            this.doc.rect(x + colWidth - 5, y + (rowHeight / 4), 3, rowHeight / 2).fill(this.colors.black);
+        }
+        this.doc.restore();
+
+        // Signature Areas - Fixed to Bottom (Professional Enterprise Standard)
+        const sigAreaY = this.doc.page.height - 100;
+        const sigWidth = 140;
+
+        this.doc.save();
+        this.doc.lineWidth(0.8).dash(2, { space: 2 }).strokeColor(this.colors.black);
+
+        // Student Signature
+        this.doc.moveTo(this.pageMargin, sigAreaY).lineTo(this.pageMargin + sigWidth, sigAreaY).stroke();
+        this.doc.undash()
+            .fontSize(7)
+            .font('Helvetica-Bold')
+            .text("STUDENT SIGNATURE", this.pageMargin, sigAreaY + 8, { width: sigWidth, align: 'center' });
+
+        // Invigilator Signature
+        const invX = this.doc.page.width - this.pageMargin - sigWidth;
+        this.doc.dash(2, { space: 2 }).moveTo(invX, sigAreaY).lineTo(invX + sigWidth, sigAreaY).stroke();
+        this.doc.undash()
+            .fontSize(7)
+            .font('Helvetica-Bold')
+            .text("INVIGILATOR SIGNATURE", invX, sigAreaY + 8, { width: sigWidth, align: 'center' });
+
+        this.doc.restore();
     }
 
     private addFooter() {
-        const range = this.doc.bufferedPageRange();
-        const count = range.count;
-
-        for (let i = 0; i < count; i++) {
+        const pages = this.doc.bufferedPageRange();
+        for (let i = 0; i < pages.count; i++) {
             this.doc.switchToPage(i);
+            const y = this.doc.page.height - 25;
+            this.doc.save();
+            this.doc.fontSize(6.5).font('Helvetica').fillColor(this.colors.darkGray).text(
+                `AL-GHAZALI OMR MANAGEMENT SYSTEM | PAGE ${i + 1} OF ${pages.count} | SECURE DOCUMENT`,
+                0, y, { align: 'center', width: this.doc.page.width }
+            );
 
-            const originalBottomMargin = this.doc.page.margins.bottom;
-            this.doc.page.margins.bottom = 0;
-            const footerY = this.doc.page.height - originalBottomMargin;
-
-            // Footer line
-            this.doc
-                .strokeColor(this.colors.light)
-                .lineWidth(1)
-                .moveTo(this.pageMargin, footerY)
-                .lineTo(this.doc.page.width - this.pageMargin, footerY)
-                .stroke();
-
-            // Footer text
-            const footerText = `Page ${i + 1} of ${count} | ${this.options.schoolName} | Auto-generated OMR Sheet`;
-            this.doc
-                .fontSize(7)
-                .fillColor(this.colors.medium)
-                .font('Helvetica')
-                .text(footerText, this.pageMargin, footerY + 5, {
-                    width: this.doc.page.width - this.pageMargin * 2,
-                    align: "center",
-                });
-
-            this.doc.page.margins.bottom = originalBottomMargin;
-        }
-
-        if (count > 0) {
-            this.doc.switchToPage(count - 1);
+            // Corner Registration Marks
+            const size = 15;
+            const m = 20;
+            this.doc.fillColor(this.colors.black);
+            this.doc.rect(m, this.doc.page.height - m - size, size, size).fill();
+            this.doc.rect(this.doc.page.width - m - size, this.doc.page.height - m - size, size, size).fill();
+            this.doc.restore();
         }
     }
 }
+

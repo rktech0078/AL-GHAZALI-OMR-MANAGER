@@ -136,7 +136,7 @@ function MyExamsContent() {
                 .eq('id', user.id)
                 .single();
 
-            let schoolName = 'Al-Ghazali School';
+            let schoolName = 'AL-GHAZALI HIGH SCHOOL';
             if (userData?.school_id) {
                 const { data: schoolData } = await supabase
                     .from('schools')

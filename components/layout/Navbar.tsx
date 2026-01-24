@@ -6,26 +6,19 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
-import { createSupabaseBrowserClient } from '@/lib/supabase/client';
-import type { User } from '@supabase/supabase-js';
+import { useAuth } from '@/lib/context/AuthContext';
 import { FullScreenLoader } from "@/components/ui/FullScreenLoader";
-import { signOutAction } from "@/lib/actions/auth-actions";
-
-interface UserProfile {
-    full_name: string;
-    role: string;
-}
 
 export function Navbar() {
     const [isScrolled, setIsScrolled] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-    const [user, setUser] = useState<User | null>(null);
-    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+    const { user, profile: userProfile, loading, signOut } = useAuth();
+
     const pathname = usePathname();
     const router = useRouter();
 
-    const [loading, setLoading] = useState(true);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
 
     useEffect(() => {
@@ -36,82 +29,15 @@ export function Navbar() {
         return () => window.removeEventListener('scroll', handleScroll);
     }, []);
 
-    // Fetch user authentication state
-    useEffect(() => {
-        const supabase = createSupabaseBrowserClient();
-
-        const fetchProfile = async (userId: string) => {
-            try {
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('full_name, role')
-                    .eq('id', userId)
-                    .single();
-                setUserProfile(profile);
-            } catch (error) {
-                console.error('Error fetching profile:', error);
-            }
-        };
-
-        const initializeAuth = async () => {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                setUser(user);
-                if (user) {
-                    await fetchProfile(user.id);
-                }
-            } catch (error) {
-                console.error('Error initializing auth:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        initializeAuth();
-
-        // Subscribe to auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            setUser(session?.user ?? null);
-
-            if (session?.user) {
-                // If we have a user but no profile (e.g. on login), fetch it
-                // We don't check !userProfile here because it might be stale closure
-                await fetchProfile(session.user.id);
-            } else {
-                setUserProfile(null);
-            }
-            setLoading(false);
-        });
-
-        // Safety timeout to prevent infinite loading in Navbar
-        const timer = setTimeout(() => {
-            setLoading(false);
-        }, 2000);
-
-        return () => {
-            subscription.unsubscribe();
-            clearTimeout(timer);
-        };
-    }, []);
-
     // Handle logout
     const handleLogout = async () => {
         try {
             setIsLoggingOut(true);
-
-            // Clear local state immediately for UI feedback
-            setUser(null);
-            setUserProfile(null);
             setIsProfileMenuOpen(false);
-
-            // Call server action to clear cookies
-            await signOutAction();
-
-            // Force hard redirect to clear all client state
-            window.location.href = '/login';
+            await signOut();
+            // AuthContext handles state clearing and redirecting
         } catch (error) {
             console.error('Error signing out:', error);
-            // Force redirect even on error
             window.location.href = '/login';
         }
     };

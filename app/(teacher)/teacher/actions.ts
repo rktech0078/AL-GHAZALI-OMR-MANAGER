@@ -138,50 +138,44 @@ export async function deleteStudent(studentId: string) {
 
         const adminClient = createAdminClient();
 
-        // 1. Delete Results
-        const { error: resultsError } = await adminClient
-            .from('results')
-            .delete()
-            .eq('student_id', studentId);
+        // 1. Thorough Cleanup of all potential database references
+        console.log(`[DeleteStudent] Starting deep cleanup for ID: ${studentId}`);
 
-        if (resultsError) {
-            console.error('Results delete error:', resultsError);
-            // Continue even if error? No, might fail later. But maybe table doesn't exist or no records.
-            // Better to log and continue or return error?
-            // If strictly enforced, we should probably stop. But let's try to proceed as sometimes it's empty.
-        }
+        // Use Promise.all for faster execution of individual deletes
+        await Promise.all([
+            adminClient.from('results').delete().eq('student_id', studentId),
+            adminClient.from('submissions').delete().eq('student_id', studentId),
+            adminClient.from('omr_sheets').delete().eq('student_id', studentId),
+            adminClient.from('exams').delete().eq('created_by', studentId)
+        ]);
 
-        // 2. Delete Submissions
-        const { error: submissionsError } = await adminClient
-            .from('submissions')
-            .delete()
-            .eq('student_id', studentId);
-
-        if (submissionsError) {
-            console.error('Submissions delete error:', submissionsError);
-        }
-
-        // 3. Delete from public.users
-        const { error: profileError } = await adminClient
-            .from('users')
-            .delete()
-            .eq('id', studentId);
-
-        if (profileError) {
-            console.error('Profile delete error:', profileError);
-            return { error: `Failed to delete student profile: ${profileError.message}` };
-        }
-
-        // 4. Delete from auth.users
+        // 2. Perform the primary Auth Deletion
+        console.log(`[DeleteStudent] Requesting Supabase Auth deletion...`);
         const { error: authError } = await adminClient.auth.admin.deleteUser(studentId);
 
-        if (authError) {
-            console.error('Auth delete error:', authError);
-            return { error: `Failed to delete student account: ${authError.message}` };
+        // 3. ROBUST VERIFICATION (The "Reality Check")
+        // We wait for the database transaction to fully propagate and triggers to settle
+        await new Promise(resolve => setTimeout(resolve, 1000));
+
+        // Check the ACTUAL state of the system
+        const { data: verifyData, error: verifyError } = await adminClient.auth.admin.getUserById(studentId);
+
+        // If getUserById returns an error (404/Not Found) or verifyData.user is null, 
+        // it means the user IS GONE. This is our Success condition.
+        const isUserGone = !verifyData?.user || (verifyError && verifyError.status === 404);
+
+        if (isUserGone) {
+            console.log('[DeleteStudent] Verification Success: User is confirmed deleted from the system.');
+            revalidatePath('/teacher/students');
+            return { success: true };
         }
 
-        revalidatePath('/teacher/students');
-        return { success: true };
+        // 4. Handle genuine failure
+        // If the user STILL exists after our attempt and wait, then it's a real error.
+        const errorMessage = authError?.message || verifyError?.message || 'Database could not remove user due to hidden constraints.';
+        console.error(`[DeleteStudent] Reality Check Failed: User ${studentId} still exists. Error: ${errorMessage}`);
+
+        return { error: `Failed to delete student account: ${errorMessage}` };
 
     } catch (error: any) {
         console.error('Delete student error:', error);

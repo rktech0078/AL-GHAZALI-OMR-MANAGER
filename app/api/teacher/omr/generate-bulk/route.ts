@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { OMRPDFGenerator } from '@/lib/omr/pdf-generator';
 import archiver from 'archiver';
+import fs from 'fs';
+import path from 'path';
 
 export async function POST(request: NextRequest) {
     try {
@@ -67,7 +69,7 @@ export async function POST(request: NextRequest) {
             .eq('id', user.id)
             .single();
 
-        let schoolName = 'Al-Ghazali School';
+        let schoolName = 'AL-GHAZALI HIGH SCHOOL';
         if (teacherData?.school_id) {
             const { data: schoolData } = await supabase
                 .from('schools')
@@ -75,6 +77,15 @@ export async function POST(request: NextRequest) {
                 .eq('id', teacherData.school_id)
                 .single();
             if (schoolData) schoolName = schoolData.school_name;
+        }
+
+        // Load Logo
+        const logoPath = path.join(process.cwd(), "public", "al-ghazali-logo.png");
+        let logoBuffer: Buffer | undefined;
+        try {
+            logoBuffer = await fs.promises.readFile(logoPath);
+        } catch (error) {
+            console.warn("Logo file not found, proceeding without logo.");
         }
 
         // Create ZIP archive
@@ -100,6 +111,7 @@ export async function POST(request: NextRequest) {
                 }, {}) : {},
                 examName: exam.exam_name,
                 schoolName: schoolName,
+                logoBuffer: logoBuffer,
                 studentName: student.full_name,
                 studentId: student.id,
                 examId: examId,

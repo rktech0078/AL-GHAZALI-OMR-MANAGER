@@ -99,7 +99,7 @@ export default function ExamResultsPage() {
         } finally {
             setLoading(false);
         }
-    }, [examId, showToast]);
+    }, [examId, showToast, router]);
 
     useEffect(() => {
         fetchData();

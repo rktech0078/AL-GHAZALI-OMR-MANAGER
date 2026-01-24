@@ -7,12 +7,13 @@ async function runTest() {
 
     try {
         const generator = new OMRPDFGenerator({
-            totalQuestions: 20,
+            totalQuestions: 12,
             options: 4,
             showKey: true,
-            answerKey: { '1': 'A', '2': 'B' },
-            examName: 'Direct Test Exam',
-            schoolName: 'Direct Test School'
+            answerKey: { '1': 'A', '2': 'B', '12': 'D' },
+            examName: 'Preliminary Examination 2025-26',
+            schoolName: 'AL-GHAZALI HIGH SCHOOL',
+            examId: 'EXAM-12-BASIC'
         });
 
         const buffer = await generator.generate();

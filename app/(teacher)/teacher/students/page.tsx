@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import AddStudentModal from '@/components/teacher/AddStudentModal';
 import ConfirmationModal from '@/components/ui/ConfirmationModal';
 import { deleteStudent } from '../actions';
+import { useAuth } from '@/lib/context/AuthContext';
 
 interface Student {
     id: string;
@@ -17,6 +18,7 @@ interface Student {
 }
 
 export default function MyStudentsPage() {
+    const { user, profile, loading: authLoading } = useAuth();
     const [students, setStudents] = useState<Student[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -27,85 +29,34 @@ export default function MyStudentsPage() {
     const [isDeleting, setIsDeleting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
 
-    // Ensure we only run client-side code after mounting
     useEffect(() => {
         setIsMounted(true);
     }, []);
 
-    const fetchStudents = async () => {
-        console.log('[StudentsPage] Starting fetchStudents...');
-
-        // Safety timeout
-        const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Request timed out')), 10000)
-        );
+    const fetchStudents = useCallback(async () => {
+        if (!profile?.school_id) return;
 
         try {
             setLoading(true);
+            setError(null);
             const supabase = createSupabaseBrowserClient();
 
-            // Race between fetch and timeout
-            await Promise.race([
-                (async () => {
-                    const { data: { user }, error: authError } = await supabase.auth.getUser();
+            const { data, error: fetchError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('school_id', profile.school_id)
+                .eq('role', 'student')
+                .order('full_name', { ascending: true });
 
-                    console.log('[StudentsPage] Auth user:', user?.id, 'Error:', authError);
-
-                    if (!user) {
-                        console.warn('[StudentsPage] No user found');
-                        setError('Please log in to view students.');
-                        return;
-                    }
-
-                    // Get teacher's school_id and verify role
-                    const { data: teacherData, error: teacherError } = await supabase
-                        .from('users')
-                        .select('school_id, role')
-                        .eq('id', user.id)
-                        .single();
-
-                    if (teacherError) {
-                        console.error('Teacher data error:', teacherError);
-                        throw new Error(`Failed to fetch teacher data: ${teacherError.message}`);
-                    }
-
-                    // Check if user is a teacher
-                    if (teacherData?.role !== 'teacher') {
-                        setError('Access denied. This page is only for teachers.');
-                        return;
-                    }
-
-                    if (!teacherData?.school_id) {
-                        throw new Error('Your account is not associated with a school. Please contact an administrator to assign you to a school.');
-                    }
-
-                    // Fetch students of the same school
-                    const { data, error } = await supabase
-                        .from('users')
-                        .select('*')
-                        .eq('school_id', teacherData.school_id)
-                        .eq('role', 'student')
-                        .order('full_name', { ascending: true });
-
-                    if (error) {
-                        console.error('[StudentsPage] Error fetching students list:', error);
-                        throw error;
-                    }
-
-                    console.log('[StudentsPage] Students fetched:', data?.length);
-                    setStudents(data || []);
-                })(),
-                timeoutPromise
-            ]);
-
+            if (fetchError) throw fetchError;
+            setStudents(data || []);
         } catch (err: any) {
-            console.error('[StudentsPage] Catch block error:', err);
+            console.error('[StudentsPage] Error:', err);
             setError(`Failed to load students: ${err?.message || 'Unknown error'}`);
         } finally {
-            console.log('[StudentsPage] Finally block - setLoading(false)');
             setLoading(false);
         }
-    };
+    }, [profile?.school_id]);
 
     const handleDeleteClick = (student: Student) => {
         setStudentToDelete(student);
@@ -136,10 +87,10 @@ export default function MyStudentsPage() {
     };
 
     useEffect(() => {
-        if (isMounted) {
+        if (isMounted && profile?.school_id) {
             fetchStudents();
         }
-    }, [isMounted]);
+    }, [isMounted, profile?.school_id, fetchStudents]);
 
     const filteredStudents = useMemo(() => {
         return students.filter(student =>

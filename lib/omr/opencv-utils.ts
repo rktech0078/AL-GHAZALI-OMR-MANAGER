@@ -41,7 +41,7 @@ export async function bufferToMat(buffer: Buffer): Promise<any> {
     await initializeOpenCV();
 
     // Decode image using sharp first
-    const sharp = require('sharp');
+    const sharp = (await import('sharp')).default;
     const { data, info } = await sharp(buffer)
         .removeAlpha() // Ensure 3 channels (RGB)
         .raw()
@@ -57,11 +57,19 @@ export async function bufferToMat(buffer: Buffer): Promise<any> {
  * Convert Mat to Buffer
  */
 export function matToBuffer(mat: any): Buffer {
-    const canvas = document.createElement('canvas');
-    cv.imshow(canvas, mat);
-    const dataUrl = canvas.toDataURL('image/png');
-    const base64 = dataUrl.split(',')[1];
-    return Buffer.from(base64, 'base64');
+    // Check if we're in a browser environment
+    if (typeof document !== 'undefined' && typeof window !== 'undefined') {
+        // Browser environment
+        const canvas = document.createElement('canvas');
+        cv.imshow(canvas, mat);
+        const dataUrl = canvas.toDataURL('image/png');
+        const base64 = dataUrl.split(',')[1];
+        return Buffer.from(base64, 'base64');
+    } else {
+        // Server environment - return empty buffer as placeholder
+        // Actual conversion should happen server-side differently
+        return Buffer.alloc(0);
+    }
 }
 
 /**
