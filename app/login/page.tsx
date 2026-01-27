@@ -21,6 +21,31 @@ export default function LoginPage() {
   const supabase = createSupabaseBrowserClient();
   const { showToast } = useToast();
 
+  // Check for existing session on mount
+  useState(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        // If already has session, don't even wait for handleLogin
+        // Fetch profile to know where to redirect
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', session.user.id)
+          .single();
+
+        if (profile?.role) {
+          let url = '/';
+          if (profile.role === 'admin') url = '/admin';
+          else if (profile.role === 'teacher') url = '/teacher';
+          else if (profile.role === 'student') url = '/student';
+          router.replace(url);
+        }
+      }
+    };
+    checkSession();
+  });
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);

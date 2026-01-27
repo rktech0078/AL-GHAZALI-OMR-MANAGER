@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -26,6 +27,7 @@ interface Submission {
 }
 
 export default function ExamResultsPage() {
+    const { user, profile, loading: authLoading } = useAuth();
     const params = useParams();
     const router = useRouter();
     const examId = params.id as string;
@@ -43,28 +45,18 @@ export default function ExamResultsPage() {
     const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchData = useCallback(async () => {
+        if (authLoading) return;
+
+        if (!user) {
+            router.push('/login');
+            return;
+        }
+
+        // Layout handles role protection.
+        // Proceed to fetch results.
+
         try {
             const supabase = createSupabaseBrowserClient();
-
-            // Check authentication and role first
-            const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user) {
-                router.push('/login');
-                return;
-            }
-
-            const { data: profile } = await supabase
-                .from('users')
-                .select('role')
-                .eq('id', user.id)
-                .single();
-
-            if (profile?.role !== 'teacher') {
-                showToast('Access denied. This page is only for teachers.', 'error');
-                router.push('/');
-                return;
-            }
 
             // Fetch exam details
             const { data: examData, error: examError } = await supabase
@@ -99,7 +91,7 @@ export default function ExamResultsPage() {
         } finally {
             setLoading(false);
         }
-    }, [examId, showToast, router]);
+    }, [examId, user, authLoading, showToast, router]);
 
     useEffect(() => {
         fetchData();

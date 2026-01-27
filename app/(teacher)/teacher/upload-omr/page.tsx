@@ -4,8 +4,10 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import OMRUpload from '@/components/omr/OMRUpload';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function UploadOmrPage() {
+  const { user, profile, loading: authLoading } = useAuth();
   const router = useRouter();
   const [exams, setExams] = useState<any[]>([]);
   const [selectedExamId, setSelectedExamId] = useState<string>('');
@@ -14,38 +16,19 @@ export default function UploadOmrPage() {
 
   useEffect(() => {
     const initPage = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        const { data: { user } } = await supabase.auth.getUser();
+      if (authLoading) return;
 
-        if (!user) {
-          router.push('/login');
-          return;
-        }
-
-        // Check if user is a teacher
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', user.id)
-          .single();
-
-        if (profile?.role !== 'teacher') {
-          router.push('/');
-          return;
-        }
-
-        // Fetch exams after auth check
-        await fetchExams();
-      } catch (err) {
-        console.error('Init error:', err);
-        setError('Failed to initialize page');
-        setLoading(false);
+      if (!user) {
+        router.push('/login');
+        return;
       }
+
+      // Fetch exams as soon as user is available
+      await fetchExams();
     };
 
     initPage();
-  }, [router]);
+  }, [user, profile, authLoading, router]);
 
   const fetchExams = async () => {
     try {

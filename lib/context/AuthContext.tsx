@@ -60,17 +60,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         const initializeAuth = async () => {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                setSession(session);
-                setUser(session?.user ?? null);
+                // Get initial session
+                const { data: { session: initialSession }, error: sessionError } = await supabase.auth.getSession();
 
-                if (session?.user) {
-                    const upp = await fetchProfile(session.user.id);
-                    setProfile(upp);
+                if (sessionError) throw sessionError;
+
+                setSession(initialSession);
+                setUser(initialSession?.user ?? null);
+
+                if (initialSession?.user) {
+                    // Start fetching profile in background
+                    fetchProfile(initialSession.user.id).then(upp => {
+                        setProfile(upp);
+                    });
                 }
             } catch (error) {
                 console.error('[AuthContext] Auth initialization failed:', error);
             } finally {
+                // IMPORTANT: Set loading to false as soon as session check is done
                 setLoading(false);
             }
         };
@@ -78,15 +85,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         initializeAuth();
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+            console.log(`[AuthContext] 🔄 Auth event: ${event}`, { userId: currentSession?.user?.id });
+
             setSession(currentSession);
             setUser(currentSession?.user ?? null);
 
-            if (currentSession?.user) {
-                const upp = await fetchProfile(currentSession.user.id);
-                setProfile(upp);
-            } else {
+            if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || (event === 'INITIAL_SESSION' && currentSession?.user)) {
+                const userId = currentSession?.user?.id;
+                if (userId) {
+                    // Non-blocking profile fetch
+                    fetchProfile(userId).then(upp => {
+                        setProfile(upp);
+                    });
+                }
+            } else if (event === 'SIGNED_OUT') {
                 setProfile(null);
+                setUser(null);
+                setSession(null);
             }
+
+            // Always clear loading if an event occurs
             setLoading(false);
         });
 
@@ -96,11 +114,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [supabase.auth, fetchProfile]);
 
     const signOut = async () => {
-        await supabase.auth.signOut();
-        setUser(null);
-        setProfile(null);
-        setSession(null);
-        router.push('/login');
+        try {
+            await supabase.auth.signOut();
+            // Clear local states
+            setUser(null);
+            setProfile(null);
+            setSession(null);
+
+            // Hard redirect to clear any residual memory-based state/cache
+            window.location.href = '/login';
+        } catch (error) {
+            console.error('[AuthContext] Sign out failed:', error);
+            // Even if it fails, try to clear locally and redirect
+            window.location.href = '/login';
+        }
     };
 
     return (

@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 
 export default function CreateExamPage() {
+    const { user, profile, loading: authLoading } = useAuth();
     const router = useRouter();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [authChecking, setAuthChecking] = useState(true);
 
     const [formData, setFormData] = useState({
         exam_name: '',
@@ -22,47 +23,16 @@ export default function CreateExamPage() {
 
     // Check authentication and role
     useEffect(() => {
-        const checkAuth = async () => {
-            try {
-                const supabase = createSupabaseBrowserClient();
-                const { data: { user } } = await supabase.auth.getUser();
+        if (authLoading) return;
 
-                if (!user) {
-                    router.push('/login');
-                    return;
-                }
+        if (!user) {
+            router.push('/login');
+            return;
+        }
+    }, [user, profile, authLoading, router]);
 
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('role')
-                    .eq('id', user.id)
-                    .single();
-
-                if (profile?.role !== 'teacher') {
-                    router.push('/');
-                    return;
-                }
-
-                setAuthChecking(false);
-            } catch (err) {
-                console.error('Auth check error:', err);
-                router.push('/login');
-            }
-        };
-
-        checkAuth();
-    }, [router]);
-
-    if (authChecking) {
-        return (
-            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading...</p>
-                </div>
-            </div>
-        );
-    }
+    // We don't block on authLoading here because we want the form to be ready ASAP.
+    // The Layout's FullScreenLoader handles the initial auth check.
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -19,6 +20,7 @@ interface Student {
 
 export default function MyStudentsPage() {
     const { user, profile, loading: authLoading } = useAuth();
+    const router = useRouter();
     const [students, setStudents] = useState<Student[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -28,10 +30,6 @@ export default function MyStudentsPage() {
     const [studentToDelete, setStudentToDelete] = useState<Student | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
-
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
 
     const fetchStudents = useCallback(async () => {
         if (!profile?.school_id) return;
@@ -57,6 +55,27 @@ export default function MyStudentsPage() {
             setLoading(false);
         }
     }, [profile?.school_id]);
+
+    useEffect(() => {
+        if (authLoading) return;
+
+        if (!user) {
+            router.push('/login');
+            return;
+        }
+
+        // Layout handles role protection. 
+        // We just fetch students if we have a school_id.
+        if (profile?.school_id) {
+            fetchStudents();
+        } else if (!authLoading && profile && !profile.school_id) {
+            setLoading(false);
+        }
+    }, [user, profile, authLoading, router, fetchStudents]);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     const handleDeleteClick = (student: Student) => {
         setStudentToDelete(student);

@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -24,6 +25,7 @@ interface Exam {
 }
 
 function MyExamsContent() {
+    const { user, profile, loading: authLoading } = useAuth();
     const [exams, setExams] = useState<Exam[]>([]);
     const [loading, setLoading] = useState(true);
     const [generatingOMR, setGeneratingOMR] = useState<string | null>(null);
@@ -46,35 +48,24 @@ function MyExamsContent() {
 
     useEffect(() => {
         let mounted = true;
+
         const fetchExams = async () => {
+            // Wait for session to be determined
+            if (authLoading) return;
+
+            // Basic session check
+            if (!user) {
+                router.push('/login');
+                return;
+            }
+
+            // DO NOT redirect here based on profile?.role yet, 
+            // the Layout handles the security guard.
+            // We just need the user.id to fetch exams.
+
             console.log('Fetching exams started...');
             try {
                 const supabase = createSupabaseBrowserClient();
-                const { data: { user } } = await supabase.auth.getUser();
-                console.log('User fetched:', user?.id);
-
-                if (!user) {
-                    console.log('No user found, redirecting...');
-                    if (mounted) setLoading(false);
-                    router.push('/login');
-                    return;
-                }
-
-                // Check if user is a teacher
-                const { data: profile } = await supabase
-                    .from('users')
-                    .select('role')
-                    .eq('id', user.id)
-                    .single();
-
-                if (profile?.role !== 'teacher') {
-                    console.log('User is not a teacher, redirecting...');
-                    if (mounted) setLoading(false);
-                    showToast('Access denied. This page is only for teachers.', 'error');
-                    router.push('/');
-                    return;
-                }
-
                 const { data, error } = await supabase
                     .from('exams')
                     .select('*')
@@ -92,7 +83,6 @@ function MyExamsContent() {
                 console.error('Error fetching exams:', err);
                 if (mounted) showToast(err?.message || 'Failed to load exams', 'error');
             } finally {
-                console.log('Fetch exams finally block reached');
                 if (mounted) setLoading(false);
             }
         };
@@ -101,7 +91,6 @@ function MyExamsContent() {
 
         // Refetch when window regains focus
         const handleFocus = () => {
-            console.log('Window focused, refetching exams...');
             fetchExams();
         };
 
@@ -111,7 +100,7 @@ function MyExamsContent() {
             mounted = false;
             window.removeEventListener('focus', handleFocus);
         };
-    }, [router, showToast]);
+    }, [user, profile, authLoading, router, showToast]);
 
     const handleGenerateOMR = async (exam: Exam) => {
         try {
@@ -307,7 +296,7 @@ function MyExamsContent() {
                             <div className="p-6 flex-1">
                                 <div className="flex justify-between items-start mb-4">
                                     <div className="flex-1 pr-4">
-                                        <Link href={`/teacher/exams/${exam.id}`} className="block">
+                                        <Link href={`/teacher/exams/${exam.id}`} className="block" prefetch={false}>
                                             <h3 className="text-lg font-bold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-1" title={exam.exam_name}>
                                                 {exam.exam_name}
                                             </h3>

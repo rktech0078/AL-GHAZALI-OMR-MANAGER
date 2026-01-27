@@ -66,35 +66,34 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Get session
+    // IMPORTANT: specific pattern to refresh session
+    // This validates the user token strictly but DOES NOT block on database
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      data: { user },
+    } = await supabase.auth.getUser();
 
     // Define protected routes and auth routes
     const protectedRoutes = ["/admin", "/teacher", "/student"];
     const authRoutes = ["/login", "/signup"];
 
-    // Redirect unauthenticated users from protected routes
+    // 1. Redirect unauthenticated users from protected routes
     if (
-      !session &&
+      !user &&
       protectedRoutes.some((prefix) => pathname.startsWith(prefix))
     ) {
-      return NextResponse.redirect(new URL("/login", request.url));
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
     }
 
-    // Redirect authenticated users from auth routes to home
-    if (session && authRoutes.some((prefix) => pathname.startsWith(prefix))) {
+    // 2. Redirect authenticated users from auth routes
+    // (Optional: Layouts will handle specific role-based dashboard redirects)
+    if (user && authRoutes.some((prefix) => pathname.startsWith(prefix))) {
       return NextResponse.redirect(new URL("/", request.url));
     }
 
-    // TEMPORARILY DISABLED: Role-based protection
-    // Let pages handle their own role checks for now
-    // This will be re-enabled after we confirm pages are loading
-
     return response;
   } catch (error) {
-    // If anything fails, let the request through
     console.error('[Middleware] Error:', error);
     return response;
   }

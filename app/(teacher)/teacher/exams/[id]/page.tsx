@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createSupabaseBrowserClient } from '@/lib/supabase/client';
+import { useAuth } from '@/lib/context/AuthContext';
 import { useToast } from '@/components/ui/Toast';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -29,10 +30,7 @@ interface Student {
 }
 
 export default function ExamDetailPage() {
-    return <ExamDetailContent />;
-}
-
-function ExamDetailContent() {
+    const { user, profile, loading: authLoading } = useAuth();
     const params = useParams();
     const router = useRouter();
     const examId = params.id as string;
@@ -46,65 +44,79 @@ function ExamDetailContent() {
     const [generatingPNG, setGeneratingPNG] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const supabase = createSupabaseBrowserClient();
-                const { data: { user } } = await supabase.auth.getUser();
+    const [timeoutError, setTimeoutError] = useState(false);
 
-                if (!user) {
-                    setLoading(false);
-                    router.push('/login');
-                    return;
-                }
+    const fetchData = useCallback(async () => {
+        if (authLoading) return;
 
-                // Check if user is a teacher
-                const { data: profile } = await supabase
+        // Reset timeout on new fetch attempt
+        setTimeoutError(false);
+
+        if (!user) {
+            setLoading(false);
+            router.push('/login');
+            return;
+        }
+
+        // We don't redirect here anymore if profile is missing, 
+        // the Layout handles security. 
+        // We just fetch what we can with user.id.
+
+        try {
+            console.log('[ExamDetailPage] Fetching data for:', examId);
+            const supabase = createSupabaseBrowserClient();
+
+            // Fetch exam details - independent of profile
+            const { data: examData, error: examError } = await supabase
+                .from('exams')
+                .select('*')
+                .eq('id', examId)
+                .single();
+
+            if (examError) throw examError;
+            setExam(examData);
+
+            // Fetch students ONLY if we have school_id
+            if (profile?.school_id) {
+                const { data: studentsData, error: studentsError } = await supabase
                     .from('users')
-                    .select('role, school_id')
-                    .eq('id', user.id)
-                    .single();
+                    .select('id, full_name, email, roll_number, student_class')
+                    .eq('role', 'student')
+                    .eq('school_id', profile.school_id);
 
-                if (profile?.role !== 'teacher') {
-                    setLoading(false);
-                    showToast('Access denied. This page is only for teachers.', 'error');
-                    router.push('/');
-                    return;
-                }
-
-                // Fetch exam details
-                const { data: examData, error: examError } = await supabase
-                    .from('exams')
-                    .select('*')
-                    .eq('id', examId)
-                    .single();
-
-                if (examError) throw examError;
-                setExam(examData);
-
-                // Fetch students using the school_id from profile
-                if (profile?.school_id) {
-                    // Fetch students with roll_number and student_class
-                    const { data: studentsData, error: studentsError } = await supabase
-                        .from('users')
-                        .select('id, full_name, email, roll_number, student_class')
-                        .eq('role', 'student')
-                        .eq('school_id', profile.school_id);
-
-                    if (studentsError) throw studentsError;
-                    setStudents(studentsData || []);
-                }
-
-            } catch (err: any) {
-                console.error('Error fetching data:', err);
-                showToast('Failed to load exam details', 'error');
-            } finally {
-                setLoading(false);
+                if (studentsError) throw studentsError;
+                setStudents(studentsData || []);
             }
-        };
+        } catch (err: any) {
+            console.error('[ExamDetailPage] Error fetching data:', err);
+            // Don't toast on every retry unless it's a hard error
+            if (err.code !== 'PGRST116') { // Not found usually
+                showToast('Failed to load details', 'error');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [examId, user, profile, authLoading, router, showToast]);
 
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+
+        // Start fetch
+        setLoading(true);
         fetchData();
-    }, [examId, router, showToast]);
+
+        // Safety timeout - if loading takes more than 8 seconds, show retry
+        if (loading) {
+            timer = setTimeout(() => {
+                if (loading) {
+                    console.warn('[ExamDetailPage] Loading timed out');
+                    setTimeoutError(true);
+                }
+            }, 8000);
+        }
+
+        return () => clearTimeout(timer);
+    }, [fetchData, loading]);
 
     // Filter students based on search
     const filteredStudents = students.filter(student =>
@@ -289,6 +301,33 @@ function ExamDetailContent() {
     };
 
     if (loading) {
+        if (timeoutError) {
+            return (
+                <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-[50vh]">
+                    <div className="text-center space-y-4">
+                        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mx-auto">
+                            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
+                        <h3 className="text-lg font-semibold text-gray-900">Loading taking longer than expected</h3>
+                        <p className="text-gray-500 max-w-md mx-auto">
+                            The connection seems slow or is stuck. You can try reloading the data.
+                        </p>
+                        <Button
+                            onClick={() => {
+                                setLoading(true);
+                                fetchData();
+                            }}
+                            variant="primary"
+                        >
+                            Retry Loading
+                        </Button>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div className="container mx-auto px-4 py-8">
                 <div className="animate-pulse space-y-8">
