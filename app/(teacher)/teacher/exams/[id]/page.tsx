@@ -99,11 +99,12 @@ export default function ExamDetailPage() {
     }, [examId, user, profile, authLoading, router, showToast]);
 
     useEffect(() => {
-        let timer: NodeJS.Timeout;
-
-        // Start fetch
         setLoading(true);
         fetchData();
+    }, [fetchData]);
+
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
 
         // Safety timeout - if loading takes more than 8 seconds, show retry
         if (loading) {
@@ -116,7 +117,7 @@ export default function ExamDetailPage() {
         }
 
         return () => clearTimeout(timer);
-    }, [fetchData, loading]);
+    }, [loading]);
 
     // Filter students based on search
     const filteredStudents = students.filter(student =>
