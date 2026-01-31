@@ -2,7 +2,7 @@
   <img src="public/logo.svg" alt="Al-Ghazali OMR Manager" width="100%">
 </p>
 
-# Al-Ghazali OMR Manager
+# Al-Ghazali High School OMR Manager
 
 ![Next.js](https://img.shields.io/badge/Next.js-14+-black?style=for-the-badge&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
